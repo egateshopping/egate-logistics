@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { 
   Package, MessageCircle, User, Phone, Calendar, 
   ChevronDown, ChevronUp, Truck, Image, DollarSign,
-  ExternalLink
+  ExternalLink, Wand2, Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -75,6 +75,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
   const [internationalTracking, setInternationalTracking] = useState(order.international_tracking || '');
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingPricing, setIsSavingPricing] = useState(false);
+  const [isFetchingImage, setIsFetchingImage] = useState(false);
 
   const calculateTotal = () => {
     const volumetricWeight = (pricing.length_in * pricing.width_in * pricing.height_in) / 139;
@@ -136,6 +137,33 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
 
   // Calculate quick total for the pricing dialog
   const quickTotal = pricing.base_item_cost + pricing.international_shipping + pricing.tax;
+
+  const handleAutoFetchImage = async () => {
+    setIsFetchingImage(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-metadata', {
+        body: { url: order.product_url }
+      });
+
+      if (error) {
+        console.error('Edge function error:', error);
+        toast.error('Image not found - please add manually');
+        return;
+      }
+
+      if (data?.image) {
+        setProductImageUrl(data.image);
+        toast.success('Image found and applied!');
+      } else {
+        toast.error('Image not found - please add manually');
+      }
+    } catch (err) {
+      console.error('Fetch metadata error:', err);
+      toast.error('Image not found - please add manually');
+    } finally {
+      setIsFetchingImage(false);
+    }
+  };
 
   const handleSaveQuickPricing = async () => {
     setIsSavingPricing(true);
@@ -259,14 +287,29 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
                   <div className="space-y-5 py-4">
                     {/* Header Section: Product Link */}
                     <div className="space-y-3">
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start gap-2 text-primary hover:text-primary"
-                        onClick={() => window.open(order.product_url, '_blank')}
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                        🔗 Open Customer Link
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          className="flex-1 justify-start gap-2 text-primary hover:text-primary"
+                          onClick={() => window.open(order.product_url, '_blank')}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          🔗 Open Customer Link
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={handleAutoFetchImage}
+                          disabled={isFetchingImage}
+                          className="gap-2"
+                        >
+                          {isFetchingImage ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Wand2 className="h-4 w-4" />
+                          )}
+                          {isFetchingImage ? 'Fetching...' : '🪄 Auto-Fetch Image'}
+                        </Button>
+                      </div>
                       
                       {/* User's Options */}
                       <div className="p-3 bg-muted/50 rounded-lg border border-border">
