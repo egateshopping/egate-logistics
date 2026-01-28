@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Eye, EyeOff, Loader2, Package } from 'lucide-react';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -40,16 +40,18 @@ export default function Login() {
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-md space-y-8">
           <div className="text-center">
-            <Link to="/" className="inline-flex items-center gap-2 font-display text-2xl font-bold mb-8">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg gradient-hero">
-                <Package className="h-5 w-5 text-primary-foreground" />
-              </div>
-              <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                ShipME
+            <Link to="/" className="inline-flex flex-col items-center gap-1 mb-8">
+              <span className="text-3xl font-extrabold tracking-tight">
+                <span className="text-primary">e</span>
+                <span className="text-primary">g</span>
+                <span className="text-primary">ate</span>
+              </span>
+              <span className="text-xs font-medium text-accent tracking-widest uppercase">
+                Discover, Share & Buy
               </span>
             </Link>
-            <h1 className="text-2xl font-display font-bold">Welcome back</h1>
-            <p className="text-muted-foreground mt-2">Sign in to your account to continue</p>
+            <h1 className="text-2xl font-extrabold">Welcome back</h1>
+            <p className="text-muted-foreground mt-2 font-light">Sign in to your account to continue</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -86,7 +88,7 @@ export default function Login() {
               </div>
             </div>
 
-            <Button type="submit" disabled={isLoading} className="w-full gradient-hero border-0">
+            <Button type="submit" disabled={isLoading} className="w-full gradient-accent border-0 text-accent-foreground hover:opacity-90">
               {isLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -108,15 +110,17 @@ export default function Login() {
       </div>
 
       {/* Right side - Decoration */}
-      <div className="hidden lg:flex flex-1 gradient-dark items-center justify-center p-12">
+      <div className="hidden lg:flex flex-1 gradient-hero items-center justify-center p-12">
         <div className="max-w-md text-center text-primary-foreground">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-white/10 mb-8">
-            <Package className="h-10 w-10" />
+          <div className="mb-8">
+            <span className="text-5xl font-extrabold tracking-tight text-white">
+              egate
+            </span>
           </div>
-          <h2 className="text-3xl font-display font-bold mb-4">
+          <h2 className="text-3xl font-extrabold mb-4">
             Shop from America, Delivered to You
           </h2>
-          <p className="text-white/70">
+          <p className="text-white/70 font-light">
             Access thousands of US stores and get your products shipped directly to your doorstep in the Middle East.
           </p>
         </div>

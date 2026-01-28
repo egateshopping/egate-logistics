@@ -79,7 +79,7 @@ export function ProductLinkInput() {
               onClick={handleSubmit}
               disabled={isLoading}
               size="lg"
-              className="gradient-hero border-0 px-6 rounded-xl"
+              className="gradient-accent border-0 text-accent-foreground px-6 rounded-xl hover:opacity-90"
             >
               {isLoading ? (
                 <Loader2 className="h-5 w-5 animate-spin" />

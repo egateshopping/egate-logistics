@@ -2,35 +2,35 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap');
 
-/* Professional Logistics Design System */
+/* Egate Shopping Brand Identity */
 
 @layer base {
   :root {
-    /* Core Brand - Deep Professional Blue */
-    --background: 210 20% 98%;
-    --foreground: 215 25% 15%;
+    /* Core Brand - Egate Blue */
+    --background: 0 0% 100%;
+    --foreground: 237 25% 15%;
 
     --card: 0 0% 100%;
-    --card-foreground: 215 25% 15%;
+    --card-foreground: 237 25% 15%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 215 25% 15%;
+    --popover-foreground: 237 25% 15%;
 
-    /* Primary - Logistics Blue */
-    --primary: 215 90% 45%;
+    /* Primary - Egate Blue #1923D3 = hsl(237, 81%, 46%) */
+    --primary: 237 81% 46%;
     --primary-foreground: 0 0% 100%;
 
-    /* Secondary - Cool Gray */
-    --secondary: 210 15% 93%;
-    --secondary-foreground: 215 25% 25%;
+    /* Secondary - Light Gray */
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 237 25% 25%;
 
-    --muted: 210 15% 95%;
-    --muted-foreground: 215 15% 45%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 237 15% 45%;
 
-    /* Accent - Bright Tracking Blue */
-    --accent: 200 95% 48%;
+    /* Accent - Egate Orange #F3971B = hsl(35, 90%, 53%) */
+    --accent: 35 90% 53%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
@@ -40,60 +40,60 @@
     --success: 142 72% 42%;
     --success-foreground: 0 0% 100%;
 
-    /* Warning - Pending Amber */
+    /* Warning - Amber */
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
-    --border: 210 20% 88%;
-    --input: 210 20% 88%;
-    --ring: 215 90% 45%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 237 81% 46%;
 
     --radius: 0.75rem;
 
     /* Custom gradients */
-    --gradient-hero: linear-gradient(135deg, hsl(215 90% 45%) 0%, hsl(200 95% 48%) 100%);
-    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(210 20% 98%) 100%);
-    --gradient-dark: linear-gradient(135deg, hsl(215 25% 15%) 0%, hsl(215 30% 25%) 100%);
+    --gradient-hero: linear-gradient(135deg, hsl(237 81% 46%) 0%, hsl(237 81% 56%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(35 90% 53%) 0%, hsl(35 90% 63%) 100%);
+    --gradient-dark: linear-gradient(135deg, hsl(237 25% 15%) 0%, hsl(237 30% 25%) 100%);
     
     /* Shadows */
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.05);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.05);
     --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.05);
-    --shadow-glow: 0 0 20px hsl(215 90% 45% / 0.3);
+    --shadow-glow: 0 0 20px hsl(237 81% 46% / 0.3);
 
     /* Sidebar */
-    --sidebar-background: 215 25% 15%;
-    --sidebar-foreground: 210 20% 95%;
-    --sidebar-primary: 200 95% 48%;
+    --sidebar-background: 237 25% 15%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 35 90% 53%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 215 25% 22%;
-    --sidebar-accent-foreground: 210 20% 95%;
-    --sidebar-border: 215 25% 25%;
-    --sidebar-ring: 200 95% 48%;
+    --sidebar-accent: 237 25% 22%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 237 25% 25%;
+    --sidebar-ring: 35 90% 53%;
   }
 
   .dark {
-    --background: 215 25% 10%;
-    --foreground: 210 20% 95%;
+    --background: 237 25% 10%;
+    --foreground: 0 0% 95%;
 
-    --card: 215 25% 13%;
-    --card-foreground: 210 20% 95%;
+    --card: 237 25% 13%;
+    --card-foreground: 0 0% 95%;
 
-    --popover: 215 25% 13%;
-    --popover-foreground: 210 20% 95%;
+    --popover: 237 25% 13%;
+    --popover-foreground: 0 0% 95%;
 
-    --primary: 200 95% 55%;
-    --primary-foreground: 215 25% 10%;
+    --primary: 237 81% 55%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 215 25% 18%;
-    --secondary-foreground: 210 20% 90%;
+    --secondary: 237 25% 18%;
+    --secondary-foreground: 0 0% 90%;
 
-    --muted: 215 25% 18%;
-    --muted-foreground: 215 15% 60%;
+    --muted: 237 25% 18%;
+    --muted-foreground: 237 15% 60%;
 
-    --accent: 200 95% 55%;
-    --accent-foreground: 215 25% 10%;
+    --accent: 35 90% 53%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 62% 50%;
     --destructive-foreground: 0 0% 100%;
@@ -104,18 +104,18 @@
     --warning: 38 92% 55%;
     --warning-foreground: 0 0% 0%;
 
-    --border: 215 25% 22%;
-    --input: 215 25% 22%;
-    --ring: 200 95% 55%;
+    --border: 237 25% 22%;
+    --input: 237 25% 22%;
+    --ring: 237 81% 55%;
 
-    --sidebar-background: 215 30% 8%;
-    --sidebar-foreground: 210 20% 95%;
-    --sidebar-primary: 200 95% 55%;
-    --sidebar-primary-foreground: 215 25% 10%;
-    --sidebar-accent: 215 30% 15%;
-    --sidebar-accent-foreground: 210 20% 95%;
-    --sidebar-border: 215 25% 18%;
-    --sidebar-ring: 200 95% 55%;
+    --sidebar-background: 237 30% 8%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 35 90% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 237 30% 15%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 237 25% 18%;
+    --sidebar-ring: 35 90% 53%;
   }
 }
 
@@ -126,11 +126,18 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Montserrat', system-ui, sans-serif;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Space Grotesk', system-ui, sans-serif;
+    font-family: 'Montserrat', system-ui, sans-serif;
+  }
+
+  h1 {
+    @apply font-extrabold tracking-tight;
+  }
+
+  h2, h3, h4, h5, h6 {
     @apply font-semibold tracking-tight;
   }
 }
@@ -142,6 +149,10 @@
 
   .gradient-hero {
     background: var(--gradient-hero);
+  }
+
+  .gradient-accent {
+    background: var(--gradient-accent);
   }
 
   .gradient-dark {
