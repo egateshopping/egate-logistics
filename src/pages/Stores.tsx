@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
 import type { Store } from '@/lib/supabase';
 
-const categories = ['All', 'Retail', 'Sports', 'Electronics', 'Cosmetics', 'Fashion', 'Watches', 'Car Parts'];
+const categories = ['All', 'Retail', 'Fashion', 'Electronics', 'Cosmetics', 'Sports', 'Watches'];
 
 export default function Stores() {
   const [stores, setStores] = useState<Store[]>([]);
