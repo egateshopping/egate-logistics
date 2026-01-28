@@ -75,6 +75,8 @@ export type Database = {
           international_tracking: string | null
           is_paid: boolean | null
           length_in: number | null
+          other_fees: number | null
+          other_fees_note: string | null
           payment_receipt_url: string | null
           product_image: string | null
           product_title: string | null
@@ -108,6 +110,8 @@ export type Database = {
           international_tracking?: string | null
           is_paid?: boolean | null
           length_in?: number | null
+          other_fees?: number | null
+          other_fees_note?: string | null
           payment_receipt_url?: string | null
           product_image?: string | null
           product_title?: string | null
@@ -141,6 +145,8 @@ export type Database = {
           international_tracking?: string | null
           is_paid?: boolean | null
           length_in?: number | null
+          other_fees?: number | null
+          other_fees_note?: string | null
           payment_receipt_url?: string | null
           product_image?: string | null
           product_title?: string | null
@@ -167,6 +173,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      product_cache: {
+        Row: {
+          created_at: string
+          height_in: number | null
+          id: string
+          image_url: string | null
+          length_in: number | null
+          updated_at: string
+          url: string
+          weight_lbs: number | null
+          width_in: number | null
+        }
+        Insert: {
+          created_at?: string
+          height_in?: number | null
+          id?: string
+          image_url?: string | null
+          length_in?: number | null
+          updated_at?: string
+          url: string
+          weight_lbs?: number | null
+          width_in?: number | null
+        }
+        Update: {
+          created_at?: string
+          height_in?: number | null
+          id?: string
+          image_url?: string | null
+          length_in?: number | null
+          updated_at?: string
+          url?: string
+          weight_lbs?: number | null
+          width_in?: number | null
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
