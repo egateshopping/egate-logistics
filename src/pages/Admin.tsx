@@ -137,8 +137,8 @@ export default function Admin() {
     <Layout>
       <div className="container py-8">
         <div className="mb-8">
-          <h1 className="text-2xl font-display font-bold">Admin Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Manage orders, customers, and disputes</p>
+          <h1 className="text-2xl font-extrabold">Egate Control Panel</h1>
+          <p className="text-muted-foreground mt-1 font-light">Manage orders, customers, and disputes</p>
         </div>
 
         {/* Stats */}

@@ -1,5 +1,5 @@
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Package, User, LogOut, LayoutDashboard, Store, ShieldCheck } from 'lucide-react';
+import { User, LogOut, LayoutDashboard, Store, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -25,12 +25,11 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between">
-        <Link to="/" className="flex items-center gap-2 font-display text-xl font-bold">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg gradient-hero">
-            <Package className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-            ShipME
+        <Link to="/" className="flex items-center gap-2">
+          <span className="text-2xl font-extrabold tracking-tight">
+            <span className="text-primary">e</span>
+            <span className="text-primary">g</span>
+            <span className="text-primary">ate</span>
           </span>
         </Link>
 
@@ -123,7 +122,7 @@ export function Header() {
                 </Button>
               </Link>
               <Link to="/signup">
-                <Button size="sm" className="gradient-hero border-0">
+                <Button size="sm" className="gradient-accent border-0 text-accent-foreground hover:opacity-90">
                   Get Started
                 </Button>
               </Link>
