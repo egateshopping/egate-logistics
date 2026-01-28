@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Package, MessageCircle, User, Phone, Calendar, 
   ChevronDown, ChevronUp, Truck, Image, DollarSign,
-  ExternalLink, Wand2, Loader2
+  ExternalLink, Wand2, Loader2, Zap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -65,11 +65,13 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
     tax: Number(order.tax) || 0,
     international_shipping: Number(order.international_shipping) || 0,
     customs: Number(order.customs) || 0,
+    other_fees: Number((order as any).other_fees) || 0,
     weight_lbs: Number(order.weight_lbs) || 0,
     length_in: Number(order.length_in) || 0,
     width_in: Number(order.width_in) || 0,
     height_in: Number(order.height_in) || 0,
   });
+  const [otherFeesNote, setOtherFeesNote] = useState((order as any).other_fees_note || '');
   const [productImageUrl, setProductImageUrl] = useState(order.product_image || '');
   const [eta, setEta] = useState(order.eta || '');
   const [domesticTracking, setDomesticTracking] = useState(order.domestic_tracking || '');
@@ -77,11 +79,62 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingPricing, setIsSavingPricing] = useState(false);
   const [isFetchingImage, setIsFetchingImage] = useState(false);
+  const [isAutoFilled, setIsAutoFilled] = useState(false);
+
+  // Smart Product Memory - Check cache when pricing dialog opens
+  const checkProductCache = async () => {
+    if (!order.product_url) return;
+    
+    const { data } = await supabase
+      .from('product_cache')
+      .select('*')
+      .eq('url', order.product_url)
+      .single();
+
+    if (data) {
+      setPricing(prev => ({
+        ...prev,
+        weight_lbs: data.weight_lbs || prev.weight_lbs,
+        length_in: data.length_in || prev.length_in,
+        width_in: data.width_in || prev.width_in,
+        height_in: data.height_in || prev.height_in,
+      }));
+      if (data.image_url && !productImageUrl) {
+        setProductImageUrl(data.image_url);
+      }
+      setIsAutoFilled(true);
+    }
+  };
+
+  // Smart Product Memory - Save to cache on save
+  const saveToProductCache = async () => {
+    if (!order.product_url) return;
+    
+    const cacheData = {
+      url: order.product_url,
+      weight_lbs: pricing.weight_lbs || null,
+      length_in: pricing.length_in || null,
+      width_in: pricing.width_in || null,
+      height_in: pricing.height_in || null,
+      image_url: productImageUrl || null,
+    };
+
+    await supabase
+      .from('product_cache')
+      .upsert(cacheData, { onConflict: 'url' });
+  };
+
+  // Load cache when dialog opens
+  useEffect(() => {
+    if (isPricingDialogOpen) {
+      checkProductCache();
+    }
+  }, [isPricingDialogOpen]);
 
   const calculateTotal = () => {
     const volumetricWeight = (pricing.length_in * pricing.width_in * pricing.height_in) / 139;
     const chargeableWeight = Math.max(pricing.weight_lbs, volumetricWeight);
-    const subtotal = pricing.base_item_cost + pricing.domestic_shipping + pricing.tax + pricing.international_shipping + pricing.customs;
+    const subtotal = pricing.base_item_cost + pricing.domestic_shipping + pricing.tax + pricing.international_shipping + pricing.customs + pricing.other_fees;
     const discount = Number(order.discount) || 0;
     return { total: subtotal - discount, chargeableWeight };
   };
@@ -109,6 +162,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
       .from('orders')
       .update({
         ...pricing,
+        other_fees_note: otherFeesNote || null,
         chargeable_weight: chargeableWeight,
         total_amount: total,
         eta: eta || null,
@@ -116,6 +170,9 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
         international_tracking: internationalTracking || null,
       })
       .eq('id', order.id);
+
+    // Save to product cache for future orders
+    await saveToProductCache();
 
     setIsSaving(false);
 
@@ -136,8 +193,8 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
     window.open(`https://wa.me/${profile.phone.replace(/[^0-9]/g, '')}?text=${message}`, '_blank');
   };
 
-  // Calculate quick total for the pricing dialog
-  const quickTotal = pricing.base_item_cost + pricing.international_shipping + pricing.tax;
+  // Calculate quick total for the pricing dialog (includes other_fees)
+  const quickTotal = pricing.base_item_cost + pricing.international_shipping + pricing.tax + pricing.other_fees;
 
   const handleAutoFetchImage = async () => {
     setIsFetchingImage(true);
@@ -175,11 +232,16 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
         base_item_cost: pricing.base_item_cost,
         international_shipping: pricing.international_shipping,
         tax: pricing.tax,
+        other_fees: pricing.other_fees,
+        other_fees_note: otherFeesNote || null,
         total_amount: quickTotal,
         product_image: productImageUrl || null,
         status: 'pending_payment',
       })
       .eq('id', order.id);
+
+    // Save to product cache for future orders
+    await saveToProductCache();
 
     setIsSavingPricing(false);
 
@@ -190,6 +252,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
 
     toast.success('Pricing updated - Order set to Pending Payment');
     setIsPricingDialogOpen(false);
+    setIsAutoFilled(false);
     onUpdate();
   };
 
@@ -385,7 +448,15 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
 
                     {/* Pricing Section */}
                     <div className="space-y-3">
-                      <Label className="text-sm font-medium">Pricing</Label>
+                      <div className="flex items-center gap-2">
+                        <Label className="text-sm font-medium">Pricing</Label>
+                        {isAutoFilled && (
+                          <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/30">
+                            <Zap className="h-3 w-3 mr-1" />
+                            Data auto-filled from history
+                          </Badge>
+                        )}
+                      </div>
                       <div className="grid gap-3">
                         <div className="space-y-1">
                           <Label htmlFor="item-cost" className="text-xs text-muted-foreground">Item Cost ($)</Label>
@@ -424,6 +495,30 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
                             onChange={(e) => setPricing({ ...pricing, tax: parseFloat(e.target.value) || 0 })}
                             placeholder="0.00"
                           />
+                        </div>
+
+                        {/* Other Fees with Note */}
+                        <div className="space-y-1">
+                          <Label htmlFor="other-fees" className="text-xs text-muted-foreground">Other / Misc Fees ($)</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              id="other-fees"
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={pricing.other_fees}
+                              onChange={(e) => setPricing({ ...pricing, other_fees: parseFloat(e.target.value) || 0 })}
+                              placeholder="0.00"
+                              className="w-28"
+                            />
+                            <Input
+                              type="text"
+                              value={otherFeesNote}
+                              onChange={(e) => setOtherFeesNote(e.target.value)}
+                              placeholder="Note (e.g., Express handling)"
+                              className="flex-1"
+                            />
+                          </div>
                         </div>
                       </div>
                       
@@ -527,6 +622,25 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
                 value={pricing.customs}
                 onChange={(e) => setPricing({ ...pricing, customs: parseFloat(e.target.value) || 0 })}
               />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Other / Misc Fees ($)</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={pricing.other_fees}
+                  onChange={(e) => setPricing({ ...pricing, other_fees: parseFloat(e.target.value) || 0 })}
+                  className="w-28"
+                />
+                <Input
+                  type="text"
+                  value={otherFeesNote}
+                  onChange={(e) => setOtherFeesNote(e.target.value)}
+                  placeholder="Note (optional)"
+                  className="flex-1"
+                />
+              </div>
             </div>
             <div className="p-3 bg-primary/5 rounded-lg">
               <Label className="text-xs text-muted-foreground">Total</Label>

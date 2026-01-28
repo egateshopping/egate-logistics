@@ -329,6 +329,14 @@ export default function OrderDetails() {
                   <span>{formatCurrency(order.customs)}</span>
                 </div>
               )}
+              {(order as any).other_fees && Number((order as any).other_fees) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">
+                    Other Fees{(order as any).other_fees_note && ` (${(order as any).other_fees_note})`}
+                  </span>
+                  <span>{formatCurrency((order as any).other_fees)}</span>
+                </div>
+              )}
               {order.discount && Number(order.discount) > 0 && (
                 <div className="flex justify-between text-sm text-success">
                   <span>Discount</span>
