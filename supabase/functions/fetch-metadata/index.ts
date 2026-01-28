@@ -3,6 +3,46 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+// Enhance image URLs for specific stores to get higher quality images
+function enhanceImageUrl(imageUrl: string, pageUrl: string): string {
+  try {
+    const urlLower = pageUrl.toLowerCase();
+    
+    // ASOS: Change width parameter to 1080 for HD images
+    if (urlLower.includes('asos.com')) {
+      return imageUrl.replace(/wid=\d+/gi, 'wid=1080');
+    }
+    
+    // Amazon: Remove size formatting codes to get full-size image
+    // Pattern: ._AC_SX300_SY300_.jpg -> .jpg or ._AC_UL1500_.jpg -> .jpg
+    if (urlLower.includes('amazon.')) {
+      return imageUrl.replace(/\._[A-Z0-9_,]+_\.(jpg|jpeg|png|gif|webp)/gi, '.$1');
+    }
+    
+    // Nike: Try to get higher resolution by modifying size params
+    if (urlLower.includes('nike.com')) {
+      return imageUrl
+        .replace(/wid=\d+/gi, 'wid=1200')
+        .replace(/hei=\d+/gi, 'hei=1200');
+    }
+    
+    // Zara: Increase image quality
+    if (urlLower.includes('zara.com')) {
+      return imageUrl.replace(/w=\d+/gi, 'w=1200');
+    }
+    
+    // H&M: Increase quality
+    if (urlLower.includes('hm.com')) {
+      return imageUrl.replace(/width=\d+/gi, 'width=1200');
+    }
+    
+    // Generic fallback - return as is
+    return imageUrl;
+  } catch {
+    return imageUrl;
+  }
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -34,7 +74,7 @@ Deno.serve(async (req) => {
 
     // Try fetching with a timeout and retry logic
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
       const response = await fetch(url, {
@@ -78,7 +118,12 @@ Deno.serve(async (req) => {
     const twitterImageMatch = html.match(/<meta[^>]*name=["']twitter:image["'][^>]*content=["']([^"']+)["'][^>]*>/i)
       || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*name=["']twitter:image["'][^>]*>/i);
 
-    const imageUrl = ogImageMatch?.[1] || twitterImageMatch?.[1] || null;
+    let imageUrl = ogImageMatch?.[1] || twitterImageMatch?.[1] || null;
+
+    // Enhance image URL based on store
+    if (imageUrl) {
+      imageUrl = enhanceImageUrl(imageUrl, url);
+    }
 
     // Also try to get og:title
     const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["'][^>]*>/i)
@@ -100,7 +145,6 @@ Deno.serve(async (req) => {
 
   } catch (error: unknown) {
     console.error('Error fetching metadata:', error);
-    // Return graceful failure instead of 500
     return new Response(
       JSON.stringify({ 
         image: null,
