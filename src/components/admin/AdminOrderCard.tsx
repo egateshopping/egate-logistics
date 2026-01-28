@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   Package, MessageCircle, User, Phone, Calendar, 
   ChevronDown, ChevronUp, Truck, Image, DollarSign,
@@ -238,10 +239,14 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
             {/* Customer Info */}
             {profile && (
               <div className="flex flex-wrap items-center gap-3 text-sm">
-                <span className="flex items-center gap-1">
+                <Link 
+                  to={`/admin/customer/${order.user_id}`}
+                  className="flex items-center gap-1 text-primary hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <User className="h-3 w-3" />
                   <strong>{profile.full_name}</strong>
-                </span>
+                </Link>
                 {profile.phone && (
                   <Button
                     variant="ghost"
