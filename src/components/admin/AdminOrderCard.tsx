@@ -199,8 +199,16 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
       <div className="p-4 rounded-2xl bg-card border border-border">
         {/* Header */}
         <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-muted">
-            <Package className="h-8 w-8 text-muted-foreground" />
+          <div className="h-16 w-16 shrink-0 rounded-xl bg-muted overflow-hidden flex items-center justify-center">
+            {order.product_image ? (
+              <img
+                src={order.product_image}
+                alt={order.product_title || 'Product'}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <Package className="h-8 w-8 text-muted-foreground" />
+            )}
           </div>
 
           <div className="flex-1 min-w-0">
