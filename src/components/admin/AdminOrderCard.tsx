@@ -69,6 +69,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
     width_in: Number(order.width_in) || 0,
     height_in: Number(order.height_in) || 0,
   });
+  const [productImageUrl, setProductImageUrl] = useState(order.product_image || '');
   const [eta, setEta] = useState(order.eta || '');
   const [domesticTracking, setDomesticTracking] = useState(order.domestic_tracking || '');
   const [internationalTracking, setInternationalTracking] = useState(order.international_tracking || '');
@@ -146,6 +147,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
         international_shipping: pricing.international_shipping,
         tax: pricing.tax,
         total_amount: quickTotal,
+        product_image: productImageUrl || null,
         status: 'pending_payment',
       })
       .eq('id', order.id);
@@ -246,60 +248,135 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
                     Set Price & Details
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>Set Order Price</DialogTitle>
                     <DialogDescription>
-                      Set the pricing for order #{order.id.slice(0, 8).toUpperCase()}. 
-                      This will update the status to "Pending Payment".
+                      Order #{order.id.slice(0, 8).toUpperCase()} — Updates status to "Pending Payment"
                     </DialogDescription>
                   </DialogHeader>
                   
-                  <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="item-cost">Item Cost ($)</Label>
-                      <Input
-                        id="item-cost"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={pricing.base_item_cost}
-                        onChange={(e) => setPricing({ ...pricing, base_item_cost: parseFloat(e.target.value) || 0 })}
-                        placeholder="0.00"
-                      />
+                  <div className="space-y-5 py-4">
+                    {/* Header Section: Product Link */}
+                    <div className="space-y-3">
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start gap-2 text-primary hover:text-primary"
+                        onClick={() => window.open(order.product_url, '_blank')}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        🔗 Open Customer Link
+                      </Button>
+                      
+                      {/* User's Options */}
+                      <div className="p-3 bg-muted/50 rounded-lg border border-border">
+                        <Label className="text-xs text-muted-foreground mb-2 block">Customer Options</Label>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div>
+                            <span className="text-muted-foreground">Color:</span>{' '}
+                            <strong className="text-foreground">{order.color || '—'}</strong>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Size:</span>{' '}
+                            <strong className="text-foreground">{order.size || '—'}</strong>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Quantity:</span>{' '}
+                            <strong className="text-foreground">{order.quantity}</strong>
+                          </div>
+                          {order.special_notes && (
+                            <div className="col-span-2">
+                              <span className="text-muted-foreground">Notes:</span>{' '}
+                              <strong className="text-warning">{order.special_notes}</strong>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    
+
+                    {/* Image Section */}
                     <div className="space-y-2">
-                      <Label htmlFor="intl-shipping">International Shipping ($)</Label>
-                      <Input
-                        id="intl-shipping"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={pricing.international_shipping}
-                        onChange={(e) => setPricing({ ...pricing, international_shipping: parseFloat(e.target.value) || 0 })}
-                        placeholder="0.00"
-                      />
+                      <Label htmlFor="product-image-url">Product Image URL</Label>
+                      <div className="flex gap-3">
+                        <div className="flex-1">
+                          <Input
+                            id="product-image-url"
+                            type="url"
+                            value={productImageUrl}
+                            onChange={(e) => setProductImageUrl(e.target.value)}
+                            placeholder="https://..."
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Paste the image address here to update the product photo.
+                          </p>
+                        </div>
+                        <div className="h-16 w-16 shrink-0 rounded-lg border border-border bg-muted flex items-center justify-center overflow-hidden">
+                          {productImageUrl ? (
+                            <img 
+                              src={productImageUrl} 
+                              alt="Preview" 
+                              className="h-full w-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).style.display = 'none';
+                                (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <Package className={`h-6 w-6 text-muted-foreground ${productImageUrl ? 'hidden' : ''}`} />
+                        </div>
+                      </div>
                     </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="service-fee">Service Fee / Tax ($)</Label>
-                      <Input
-                        id="service-fee"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={pricing.tax}
-                        onChange={(e) => setPricing({ ...pricing, tax: parseFloat(e.target.value) || 0 })}
-                        placeholder="0.00"
-                      />
-                    </div>
-                    
-                    <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
-                      <Label className="text-sm text-muted-foreground">Total Customer Price</Label>
-                      <p className="text-2xl font-display font-bold text-primary">
-                        ${quickTotal.toFixed(2)}
-                      </p>
+
+                    {/* Pricing Section */}
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">Pricing</Label>
+                      <div className="grid gap-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="item-cost" className="text-xs text-muted-foreground">Item Cost ($)</Label>
+                          <Input
+                            id="item-cost"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={pricing.base_item_cost}
+                            onChange={(e) => setPricing({ ...pricing, base_item_cost: parseFloat(e.target.value) || 0 })}
+                            placeholder="0.00"
+                          />
+                        </div>
+                        
+                        <div className="space-y-1">
+                          <Label htmlFor="intl-shipping" className="text-xs text-muted-foreground">International Shipping ($)</Label>
+                          <Input
+                            id="intl-shipping"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={pricing.international_shipping}
+                            onChange={(e) => setPricing({ ...pricing, international_shipping: parseFloat(e.target.value) || 0 })}
+                            placeholder="0.00"
+                          />
+                        </div>
+                        
+                        <div className="space-y-1">
+                          <Label htmlFor="service-fee" className="text-xs text-muted-foreground">Service Fee / Tax ($)</Label>
+                          <Input
+                            id="service-fee"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={pricing.tax}
+                            onChange={(e) => setPricing({ ...pricing, tax: parseFloat(e.target.value) || 0 })}
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
+                        <Label className="text-sm text-muted-foreground">Total Customer Price</Label>
+                        <p className="text-2xl font-display font-bold text-primary">
+                          ${quickTotal.toFixed(2)}
+                        </p>
+                      </div>
                     </div>
                   </div>
                   
