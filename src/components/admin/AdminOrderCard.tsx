@@ -20,6 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -48,6 +57,7 @@ const orderStatuses: OrderStatus[] = [
 
 export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isPricingDialogOpen, setIsPricingDialogOpen] = useState(false);
   const [pricing, setPricing] = useState({
     base_item_cost: Number(order.base_item_cost) || 0,
     domestic_shipping: Number(order.domestic_shipping) || 0,
@@ -63,6 +73,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
   const [domesticTracking, setDomesticTracking] = useState(order.domestic_tracking || '');
   const [internationalTracking, setInternationalTracking] = useState(order.international_tracking || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingPricing, setIsSavingPricing] = useState(false);
 
   const calculateTotal = () => {
     const volumetricWeight = (pricing.length_in * pricing.width_in * pricing.height_in) / 139;
@@ -117,9 +128,38 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
   const openWhatsApp = () => {
     if (!profile?.phone) return;
     const message = encodeURIComponent(
-      `Hi ${profile.full_name},\n\nUpdate on your order #${order.id.slice(0, 8).toUpperCase()}:\nStatus: ${getStatusLabel(order.status)}\n\nThank you for choosing ShipME!`
+      `Hi ${profile.full_name},\n\nUpdate on your order #${order.id.slice(0, 8).toUpperCase()}:\nStatus: ${getStatusLabel(order.status)}\n\nThank you for choosing Egate Shopping!`
     );
     window.open(`https://wa.me/${profile.phone.replace(/[^0-9]/g, '')}?text=${message}`, '_blank');
+  };
+
+  // Calculate quick total for the pricing dialog
+  const quickTotal = pricing.base_item_cost + pricing.international_shipping + pricing.tax;
+
+  const handleSaveQuickPricing = async () => {
+    setIsSavingPricing(true);
+    
+    const { error } = await supabase
+      .from('orders')
+      .update({
+        base_item_cost: pricing.base_item_cost,
+        international_shipping: pricing.international_shipping,
+        tax: pricing.tax,
+        total_amount: quickTotal,
+        status: 'pending_payment',
+      })
+      .eq('id', order.id);
+
+    setIsSavingPricing(false);
+
+    if (error) {
+      toast.error('Failed to update pricing');
+      return;
+    }
+
+    toast.success('Pricing updated - Order set to Pending Payment');
+    setIsPricingDialogOpen(false);
+    onUpdate();
   };
 
   const { total, chargeableWeight } = calculateTotal();
@@ -194,6 +234,94 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
               <span>Qty: <strong>{order.quantity}</strong></span>
               {order.special_notes && (
                 <span className="text-warning"><strong>Notes:</strong> {order.special_notes}</span>
+              )}
+            </div>
+
+            {/* Quick Price Button */}
+            <div className="flex items-center gap-2 mt-3">
+              <Dialog open={isPricingDialogOpen} onOpenChange={setIsPricingDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" className="gradient-accent border-0">
+                    <DollarSign className="h-4 w-4 mr-1" />
+                    Set Price & Details
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Set Order Price</DialogTitle>
+                    <DialogDescription>
+                      Set the pricing for order #{order.id.slice(0, 8).toUpperCase()}. 
+                      This will update the status to "Pending Payment".
+                    </DialogDescription>
+                  </DialogHeader>
+                  
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="item-cost">Item Cost ($)</Label>
+                      <Input
+                        id="item-cost"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={pricing.base_item_cost}
+                        onChange={(e) => setPricing({ ...pricing, base_item_cost: parseFloat(e.target.value) || 0 })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="intl-shipping">International Shipping ($)</Label>
+                      <Input
+                        id="intl-shipping"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={pricing.international_shipping}
+                        onChange={(e) => setPricing({ ...pricing, international_shipping: parseFloat(e.target.value) || 0 })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="service-fee">Service Fee / Tax ($)</Label>
+                      <Input
+                        id="service-fee"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={pricing.tax}
+                        onChange={(e) => setPricing({ ...pricing, tax: parseFloat(e.target.value) || 0 })}
+                        placeholder="0.00"
+                      />
+                    </div>
+                    
+                    <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
+                      <Label className="text-sm text-muted-foreground">Total Customer Price</Label>
+                      <p className="text-2xl font-display font-bold text-primary">
+                        ${quickTotal.toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsPricingDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button 
+                      onClick={handleSaveQuickPricing} 
+                      disabled={isSavingPricing}
+                      className="gradient-accent border-0"
+                    >
+                      {isSavingPricing ? 'Saving...' : 'Save & Update'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              {order.total_amount > 0 && (
+                <Badge variant="outline" className="text-primary border-primary/30">
+                  ${Number(order.total_amount).toFixed(2)}
+                </Badge>
               )}
             </div>
           </div>
