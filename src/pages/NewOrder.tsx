@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Package, Loader2, ArrowLeft, Tag, Plus, Minus } from 'lucide-react';
+import { Package, Loader2, ArrowLeft, Tag, Plus, Minus, ExternalLink, ImageIcon } from 'lucide-react';
 import { Layout } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,7 @@ export default function NewOrder() {
   const [formData, setFormData] = useState({
     product_url: initialUrl,
     product_title: '',
+    product_image: '',
     color: '',
     size: '',
     quantity: 1,
@@ -27,8 +28,94 @@ export default function NewOrder() {
     promo_code: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFetchingMeta, setIsFetchingMeta] = useState(false);
+  const [metaFetched, setMetaFetched] = useState(false);
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoDiscount, setPromoDiscount] = useState(0);
+  
+  const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastFetchedUrl = useRef<string>('');
+
+  // Auto-fetch metadata when URL changes (with debounce)
+  const fetchMetadata = async (url: string) => {
+    if (!url || url === lastFetchedUrl.current) return;
+    
+    // Basic URL validation
+    try {
+      new URL(url.startsWith('http') ? url : `https://${url}`);
+    } catch {
+      return;
+    }
+
+    setIsFetchingMeta(true);
+    lastFetchedUrl.current = url;
+
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-metadata', {
+        body: { url }
+      });
+
+      if (error) {
+        console.error('Fetch metadata error:', error);
+        setMetaFetched(true);
+        return;
+      }
+
+      if (data?.image || data?.title) {
+        setFormData(prev => ({
+          ...prev,
+          product_image: data.image || prev.product_image,
+          product_title: data.title && !prev.product_title ? data.title : prev.product_title,
+        }));
+        setMetaFetched(true);
+      }
+    } catch (err) {
+      console.error('Metadata fetch failed:', err);
+    } finally {
+      setIsFetchingMeta(false);
+    }
+  };
+
+  // Handle URL input change with debounce
+  const handleUrlChange = (value: string) => {
+    setFormData({ ...formData, product_url: value });
+    setMetaFetched(false);
+    
+    // Clear existing timeout
+    if (fetchTimeoutRef.current) {
+      clearTimeout(fetchTimeoutRef.current);
+    }
+    
+    // Set new timeout for auto-fetch (500ms after typing stops)
+    if (value.length > 10) {
+      fetchTimeoutRef.current = setTimeout(() => {
+        fetchMetadata(value);
+      }, 800);
+    }
+  };
+
+  // Also fetch on blur if not already fetched
+  const handleUrlBlur = () => {
+    if (formData.product_url && !metaFetched && formData.product_url !== lastFetchedUrl.current) {
+      fetchMetadata(formData.product_url);
+    }
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (fetchTimeoutRef.current) {
+        clearTimeout(fetchTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Auto-fetch if initial URL is provided
+  useEffect(() => {
+    if (initialUrl && !metaFetched) {
+      fetchMetadata(initialUrl);
+    }
+  }, [initialUrl]);
 
   const handleApplyPromo = async () => {
     if (!formData.promo_code.trim()) return;
@@ -64,6 +151,7 @@ export default function NewOrder() {
       user_id: user?.id,
       product_url: formData.product_url,
       product_title: formData.product_title || 'Product Order',
+      product_image: formData.product_image || null,
       color: formData.color || null,
       size: formData.size || null,
       quantity: formData.quantity,
@@ -104,15 +192,79 @@ export default function NewOrder() {
             {/* Product URL */}
             <div className="space-y-2">
               <Label htmlFor="product_url">Product URL *</Label>
-              <Input
-                id="product_url"
-                type="url"
-                value={formData.product_url}
-                onChange={(e) => setFormData({ ...formData, product_url: e.target.value })}
-                placeholder="https://amazon.com/product/..."
-                required
-              />
+              <div className="relative">
+                <Input
+                  id="product_url"
+                  type="url"
+                  value={formData.product_url}
+                  onChange={(e) => handleUrlChange(e.target.value)}
+                  onBlur={handleUrlBlur}
+                  placeholder="https://amazon.com/product/..."
+                  required
+                  className={isFetchingMeta ? 'pr-10' : ''}
+                />
+                {isFetchingMeta && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Paste a product link and we'll automatically fetch the preview
+              </p>
             </div>
+
+            {/* Product Preview Card */}
+            {(formData.product_image || formData.product_title || isFetchingMeta) && (
+              <div className="rounded-xl border border-border bg-muted/30 overflow-hidden">
+                {isFetchingMeta ? (
+                  <div className="flex items-center gap-4 p-4">
+                    <div className="h-20 w-20 shrink-0 rounded-lg bg-muted animate-pulse" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 w-3/4 bg-muted rounded animate-pulse" />
+                      <div className="h-3 w-1/2 bg-muted rounded animate-pulse" />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-4 p-4">
+                    {/* Image */}
+                    <div className="h-24 w-24 shrink-0 rounded-xl bg-muted overflow-hidden flex items-center justify-center">
+                      {formData.product_image ? (
+                        <img
+                          src={formData.product_image}
+                          alt="Product preview"
+                          className="h-full w-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                      )}
+                    </div>
+                    
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm line-clamp-2">
+                        {formData.product_title || 'Product preview'}
+                      </p>
+                      <a
+                        href={formData.product_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-primary hover:underline mt-2"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        View original link
+                      </a>
+                      {metaFetched && (
+                        <p className="text-xs text-success mt-1">✓ Preview loaded</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Product Title */}
             <div className="space-y-2">

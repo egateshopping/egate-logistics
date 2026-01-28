@@ -48,11 +48,14 @@ serve(async (req) => {
 
     const imageUrl = ogImageMatch?.[1] || twitterImageMatch?.[1] || null;
 
-    // Also try to get og:title for potential future use
+    // Also try to get og:title
     const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["'][^>]*>/i)
       || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["'][^>]*>/i);
 
-    const title = ogTitleMatch?.[1] || null;
+    // Fallback to regular <title> tag
+    const titleTagMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+
+    const title = ogTitleMatch?.[1] || titleTagMatch?.[1]?.trim() || null;
 
     return new Response(
       JSON.stringify({ 
