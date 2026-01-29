@@ -6,6 +6,33 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+// Google Images fallback search (free, no API key needed)
+async function fetchFallbackImage(query: string): Promise<string> {
+  try {
+    console.log(`🔎 Searching Google Images for: ${query}`);
+    const res = await fetch(`https://www.google.com/search?q=${encodeURIComponent(query)}&tbm=isch`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+      }
+    });
+    
+    const html = await res.text();
+    
+    // Extract image URLs from Google's response
+    const imageMatch = html.match(/src="(https?:\/\/[^"]+\.(jpg|jpeg|png|webp))"/i) || 
+                       html.match(/src="(https?:\/\/encrypted-tbn0\.gstatic\.com\/images\?q=[^"]+)"/);
+
+    if (imageMatch && imageMatch[1]) {
+      console.log("✅ Found fallback image from Google!");
+      return imageMatch[1];
+    }
+    return "";
+  } catch (e) {
+    console.error("Fallback image search failed:", e);
+    return "";
+  }
+}
+
 // Extract keywords from URL path
 function extractFromUrl(urlString: string): string {
   try {
@@ -280,6 +307,16 @@ Deno.serve(async (req) => {
     const richDescription = `${title} ${description} ${category} ${urlKeywords}`.trim();
     const displayTitle = title || urlKeywords || "Product";
 
+    // 🔥 Google Images fallback if no image found
+    if (!image || image.length < 10) {
+      console.log("⚠️ No image found in source. Triggering Google Fallback...");
+      const searchQuery = `${displayTitle} ${urlKeywords}`.trim();
+      const fallbackImage = await fetchFallbackImage(searchQuery);
+      if (fallbackImage) {
+        image = fallbackImage;
+      }
+    }
+
     // Match weight rule
     const weightMatch = await matchWeightRule(richDescription);
 
@@ -308,7 +345,7 @@ Deno.serve(async (req) => {
     console.error("❌ Error:", error);
     return new Response(
       JSON.stringify({ error: 'Could not fetch metadata', success: false }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
