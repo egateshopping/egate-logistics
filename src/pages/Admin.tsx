@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { 
   Package, Users, AlertTriangle, Truck, Search, 
-  MessageCircle, Eye, CheckCircle, Clock, X, DollarSign
+  MessageCircle, Eye, CheckCircle, Clock, X, DollarSign, Scale
 } from 'lucide-react';
 import { Layout } from '@/components/layout/Layout';
 import { Button } from '@/components/ui/button';
@@ -136,9 +136,17 @@ export default function Admin() {
   return (
     <Layout>
       <div className="container py-8">
-        <div className="mb-8">
-          <h1 className="text-2xl font-extrabold">Egate Control Panel</h1>
-          <p className="text-muted-foreground mt-1 font-light">Manage orders, customers, and disputes</p>
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-extrabold">Egate Control Panel</h1>
+            <p className="text-muted-foreground mt-1 font-light">Manage orders, customers, and disputes</p>
+          </div>
+          <Link to="/admin/settings/weights">
+            <Button variant="outline" className="gap-2">
+              <Scale className="h-4 w-4" />
+              Shipping Rules ⚖️
+            </Button>
+          </Link>
         </div>
 
         {/* Stats */}
