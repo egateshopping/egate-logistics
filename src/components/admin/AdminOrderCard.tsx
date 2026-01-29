@@ -80,6 +80,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
   const [isSavingPricing, setIsSavingPricing] = useState(false);
   const [isFetchingImage, setIsFetchingImage] = useState(false);
   const [isAutoFilled, setIsAutoFilled] = useState(false);
+  const [isPriceFetched, setIsPriceFetched] = useState(false);
 
   // Smart Product Memory - Check cache when pricing dialog opens
   const checkProductCache = async () => {
@@ -196,6 +197,45 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
   // Calculate quick total for the pricing dialog (includes other_fees)
   const quickTotal = pricing.base_item_cost + pricing.international_shipping + pricing.tax + pricing.other_fees;
 
+  // Category-based weight estimation
+  const estimateWeight = (category: string | null): number | null => {
+    if (!category) return null;
+    const categoryLower = category.toLowerCase();
+    
+    const weightMap: Record<string, number> = {
+      'shoes': 2.5,
+      'footwear': 2.5,
+      'sneakers': 2.5,
+      'boots': 3.0,
+      'sandals': 1.5,
+      'clothing': 1.0,
+      'apparel': 1.0,
+      'shirts': 0.5,
+      't-shirts': 0.4,
+      'pants': 0.8,
+      'jeans': 1.2,
+      'jackets': 1.5,
+      'coats': 2.0,
+      'bags': 1.5,
+      'handbags': 1.2,
+      'backpacks': 1.8,
+      'accessories': 0.3,
+      'jewelry': 0.2,
+      'watches': 0.5,
+      'electronics': 1.0,
+      'phones': 0.5,
+      'laptops': 5.0,
+      'tablets': 1.5,
+    };
+
+    for (const [key, weight] of Object.entries(weightMap)) {
+      if (categoryLower.includes(key)) {
+        return weight;
+      }
+    }
+    return null;
+  };
+
   const handleAutoFetchImage = async () => {
     setIsFetchingImage(true);
     try {
@@ -205,19 +245,55 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
 
       if (error) {
         console.error('Edge function error:', error);
-        toast.error('Image not found - please add manually');
+        toast.error('Could not fetch data - please add manually');
         return;
       }
 
+      let hasUpdates = false;
+
       if (data?.image) {
         setProductImageUrl(data.image);
-        toast.success('Image found and applied!');
+        hasUpdates = true;
+      }
+
+      // Handle suggested price with auto-calculation
+      if (data?.suggested_price && data.suggested_price > 0) {
+        const price = data.suggested_price;
+        const autoTax = Math.round(price * 0.1 * 100) / 100; // 10% tax
+        
+        setPricing(prev => ({
+          ...prev,
+          base_item_cost: price,
+          tax: autoTax,
+        }));
+        setIsPriceFetched(true);
+        hasUpdates = true;
+      }
+
+      // Handle category-based weight estimation
+      if (data?.category) {
+        const estimatedWeight = estimateWeight(data.category);
+        if (estimatedWeight) {
+          setPricing(prev => ({
+            ...prev,
+            weight_lbs: prev.weight_lbs || estimatedWeight, // Only set if not already set
+          }));
+          hasUpdates = true;
+        }
+      }
+
+      if (hasUpdates) {
+        const parts = [];
+        if (data?.image) parts.push('image');
+        if (data?.suggested_price) parts.push(`price ($${data.suggested_price})`);
+        if (data?.category) parts.push('category');
+        toast.success(`Found: ${parts.join(', ')}`);
       } else {
-        toast.error('Image not found - please add manually');
+        toast.error('No data found - please add manually');
       }
     } catch (err) {
       console.error('Fetch metadata error:', err);
-      toast.error('Image not found - please add manually');
+      toast.error('Could not fetch data - please add manually');
     } finally {
       setIsFetchingImage(false);
     }
@@ -383,7 +459,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
                           ) : (
                             <Wand2 className="h-4 w-4" />
                           )}
-                          {isFetchingImage ? 'Fetching...' : '🪄 Auto-Fetch Image'}
+                          {isFetchingImage ? 'Fetching...' : '🪄 Auto-Fetch'}
                         </Button>
                       </div>
                       
@@ -459,16 +535,34 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
                       </div>
                       <div className="grid gap-3">
                         <div className="space-y-1">
-                          <Label htmlFor="item-cost" className="text-xs text-muted-foreground">Item Cost ($)</Label>
+                          <Label htmlFor="item-cost" className="text-xs text-muted-foreground flex items-center gap-2">
+                            Item Cost ($)
+                            {isPriceFetched && (
+                              <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/30">
+                                <Zap className="h-2 w-2 mr-1" />
+                                Auto-fetched
+                              </Badge>
+                            )}
+                          </Label>
                           <Input
                             id="item-cost"
                             type="number"
                             step="0.01"
                             min="0"
                             value={pricing.base_item_cost}
-                            onChange={(e) => setPricing({ ...pricing, base_item_cost: parseFloat(e.target.value) || 0 })}
+                            onChange={(e) => {
+                              const newCost = parseFloat(e.target.value) || 0;
+                              const autoTax = Math.round(newCost * 0.1 * 100) / 100; // 10% tax, rounded to 2 decimals
+                              setPricing(prev => ({ 
+                                ...prev, 
+                                base_item_cost: newCost,
+                                tax: autoTax
+                              }));
+                              setIsPriceFetched(false); // Clear auto-fetch badge on manual change
+                            }}
                             placeholder="0.00"
                           />
+                          <p className="text-xs text-muted-foreground">Tax auto-calculates at 10%</p>
                         </div>
                         
                         <div className="space-y-1">

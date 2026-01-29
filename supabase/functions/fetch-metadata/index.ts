@@ -134,11 +134,82 @@ Deno.serve(async (req) => {
 
     const title = ogTitleMatch?.[1] || titleTagMatch?.[1]?.trim() || null;
 
+    // Try to extract price from various sources
+    let suggestedPrice: number | null = null;
+    let category: string | null = null;
+
+    // 1. Try og:price:amount
+    const ogPriceMatch = html.match(/<meta[^>]*property=["']og:price:amount["'][^>]*content=["']([^"']+)["'][^>]*>/i)
+      || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:price:amount["'][^>]*>/i);
+    
+    if (ogPriceMatch?.[1]) {
+      suggestedPrice = parseFloat(ogPriceMatch[1].replace(/[^0-9.]/g, ''));
+    }
+
+    // 2. Try product:price:amount
+    if (!suggestedPrice) {
+      const productPriceMatch = html.match(/<meta[^>]*property=["']product:price:amount["'][^>]*content=["']([^"']+)["'][^>]*>/i)
+        || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']product:price:amount["'][^>]*>/i);
+      
+      if (productPriceMatch?.[1]) {
+        suggestedPrice = parseFloat(productPriceMatch[1].replace(/[^0-9.]/g, ''));
+      }
+    }
+
+    // 3. Try JSON-LD structured data
+    if (!suggestedPrice) {
+      const jsonLdMatches = html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+      
+      for (const match of jsonLdMatches) {
+        try {
+          const jsonContent = match[1];
+          const data = JSON.parse(jsonContent);
+          
+          // Handle array of objects
+          const items = Array.isArray(data) ? data : [data];
+          
+          for (const item of items) {
+            // Check for Product type
+            if (item['@type'] === 'Product' || item['@type']?.includes?.('Product')) {
+              // Extract price from offers
+              if (item.offers) {
+                const offers = Array.isArray(item.offers) ? item.offers[0] : item.offers;
+                if (offers?.price) {
+                  suggestedPrice = parseFloat(String(offers.price).replace(/[^0-9.]/g, ''));
+                }
+              }
+              // Extract category
+              if (item.category) {
+                category = typeof item.category === 'string' ? item.category : item.category[0];
+              }
+              break;
+            }
+          }
+        } catch {
+          // JSON parse failed, continue to next match
+        }
+      }
+    }
+
+    // 4. Try og:product:category for category
+    if (!category) {
+      const categoryMatch = html.match(/<meta[^>]*property=["']product:category["'][^>]*content=["']([^"']+)["'][^>]*>/i)
+        || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']product:category["'][^>]*>/i);
+      category = categoryMatch?.[1] || null;
+    }
+
+    // Validate price is reasonable (not NaN and positive)
+    if (suggestedPrice && (isNaN(suggestedPrice) || suggestedPrice <= 0 || suggestedPrice > 100000)) {
+      suggestedPrice = null;
+    }
+
     return new Response(
       JSON.stringify({ 
         image: imageUrl,
         title: title,
-        success: !!(imageUrl || title)
+        suggested_price: suggestedPrice,
+        category: category,
+        success: !!(imageUrl || title || suggestedPrice)
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
