@@ -327,18 +327,27 @@ export type Database = {
       shipping_weight_rules: {
         Row: {
           created_at: string
+          default_height: number | null
+          default_length: number | null
+          default_width: number | null
           id: string
           keyword: string
           weight: number
         }
         Insert: {
           created_at?: string
+          default_height?: number | null
+          default_length?: number | null
+          default_width?: number | null
           id?: string
           keyword: string
           weight: number
         }
         Update: {
           created_at?: string
+          default_height?: number | null
+          default_length?: number | null
+          default_width?: number | null
           id?: string
           keyword?: string
           weight?: number

@@ -41,6 +41,9 @@ interface WeightRule {
   id: string;
   keyword: string;
   weight: number;
+  default_length?: number | null;
+  default_width?: number | null;
+  default_height?: number | null;
 }
 
 interface AdminOrderCardProps {
@@ -417,6 +420,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
 
       let matchedWeight = 0;
       let matchedKeyword = "";
+      let matchedDims = { l: 0, w: 0, h: 0 };
 
       // Sort rules by length (longest first)
       const sortedRules = (rulesData || []).sort((a: WeightRule, b: WeightRule) => 
@@ -427,22 +431,34 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
         if (fullText.includes(rule.keyword.toLowerCase())) {
           matchedWeight = Number(rule.weight);
           matchedKeyword = rule.keyword;
+          matchedDims = {
+            l: Number(rule.default_length || 0),
+            w: Number(rule.default_width || 0),
+            h: Number(rule.default_height || 0),
+          };
           break;
         }
       }
 
-      // Apply the Weight (If found)
+      // Apply the Weight and Dimensions (If found)
       if (matchedWeight > 0) {
-        const calculatedShipping = Math.round(matchedWeight * shippingRate * 100) / 100;
+        // Calculate chargeable weight considering volumetric if dimensions exist
+        const volumetricWeight = (matchedDims.l * matchedDims.w * matchedDims.h) / 139;
+        const chargeableWeight = Math.max(matchedWeight, volumetricWeight);
+        const calculatedShipping = Math.round(chargeableWeight * shippingRate * 100) / 100;
         
         setPricing(prev => ({
           ...prev,
           weight_lbs: matchedWeight,
+          length_in: matchedDims.l || prev.length_in,
+          width_in: matchedDims.w || prev.width_in,
+          height_in: matchedDims.h || prev.height_in,
           international_shipping: calculatedShipping,
         }));
         hasUpdates = true;
         
-        toast.success(`⚖️ Matched: "${matchedKeyword}" → ${matchedWeight} lbs`);
+        const dimsInfo = matchedDims.l > 0 ? ` 📦 ${matchedDims.l}×${matchedDims.w}×${matchedDims.h}"` : '';
+        toast.success(`⚖️ Matched: "${matchedKeyword}" → ${matchedWeight} lbs${dimsInfo}`);
       } else if (data?.title) {
         toast("⚠️ Item details fetched, but no weight rule matched.", {
           description: "Try adding a rule for this item type in Settings."
