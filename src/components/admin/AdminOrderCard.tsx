@@ -234,21 +234,25 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
 
       // Handle weight estimation from database rules (via edge function)
       if (data?.suggested_weight && data.suggested_weight > 0) {
-        const calculatedShipping = Math.round(data.suggested_weight * shippingRate * 100) / 100;
+        // Step A: Force update weight state directly
+        const newWeight = data.suggested_weight;
+        // Step B: Manually calculate shipping immediately (don't rely on useEffect)
+        const calculatedShipping = Math.round(newWeight * shippingRate * 100) / 100;
+        
         setPricing(prev => ({
           ...prev,
-          weight_lbs: prev.weight_lbs || data.suggested_weight, // Only set if not already set
-          international_shipping: prev.weight_lbs ? prev.international_shipping : calculatedShipping,
+          weight_lbs: newWeight, // Force set weight
+          international_shipping: calculatedShipping, // Force set shipping
         }));
         hasUpdates = true;
         
-        // Debug toast showing matched rule
+        // Debug toast showing matched rule with weight applied
         if (data?.matched_keyword) {
-          toast.success(`✅ Matched rule: "${data.matched_keyword}" → ${data.suggested_weight} lbs`);
+          toast.success(`⚖️ Auto-filled Weight: ${newWeight} lbs (Rule: "${data.matched_keyword}")`);
         }
       } else if (data?.title) {
         // No weight match found but we have a title
-        toast.warning('⚠️ No matching weight rule found for this title');
+        toast.warning(`⚠️ No weight rule matched for: "${data.title}"`);
       }
 
       if (hasUpdates) {
