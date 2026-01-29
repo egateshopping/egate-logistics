@@ -144,14 +144,33 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
         
         if (data.weight && !prev.weight_lbs) {
           updates.weight_lbs = data.weight;
-          // Also calculate shipping
-          updates.international_shipping = Math.round(data.weight * shippingRate * 100) / 100;
           fieldsUpdated = true;
         }
         if (data.price && !prev.base_item_cost) {
           updates.base_item_cost = data.price;
           updates.tax = Math.round(data.price * 0.1 * 100) / 100; // 10% tax
           fieldsUpdated = true;
+        }
+        // Load dimensions from memory
+        if (data.length_in && !prev.length_in) {
+          updates.length_in = data.length_in;
+          fieldsUpdated = true;
+        }
+        if (data.width_in && !prev.width_in) {
+          updates.width_in = data.width_in;
+          fieldsUpdated = true;
+        }
+        if (data.height_in && !prev.height_in) {
+          updates.height_in = data.height_in;
+          fieldsUpdated = true;
+        }
+        
+        // Recalculate shipping with loaded data
+        const weight = updates.weight_lbs || 0;
+        const volumetricWeight = ((updates.length_in || 0) * (updates.width_in || 0) * (updates.height_in || 0)) / 139;
+        const chargeableWeight = Math.max(weight, volumetricWeight);
+        if (chargeableWeight > 0) {
+          updates.international_shipping = Math.round(chargeableWeight * shippingRate * 100) / 100;
         }
         
         return updates;
@@ -171,7 +190,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
     }
   };
 
-  // Product Memory - Save to memory on save
+  // Product Memory - Save to memory on save (includes dimensions)
   const saveToProductMemory = async () => {
     if (!order.product_url) return;
     
@@ -183,6 +202,9 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
       image_url: productImageUrl || null,
       weight: pricing.weight_lbs || null,
       price: pricing.base_item_cost || null,
+      length_in: pricing.length_in || null,
+      width_in: pricing.width_in || null,
+      height_in: pricing.height_in || null,
     };
 
     const { error } = await supabase
@@ -190,7 +212,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
       .upsert(memoryData, { onConflict: 'url' });
     
     if (!error) {
-      toast.success('🧠 Product details saved to memory!');
+      toast.success('🧠 Product details + dimensions saved to memory!');
     } else {
       console.error('Failed to save product memory:', error);
     }
