@@ -167,6 +167,11 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
           updates.height_in = data.height_in;
           fieldsUpdated = true;
         }
+        // Load misc fee from memory
+        if (data.misc_fee && !prev.other_fees) {
+          updates.other_fees = data.misc_fee;
+          fieldsUpdated = true;
+        }
         
         // Recalculate shipping with loaded data
         const weight = updates.weight_lbs || 0;
@@ -184,6 +189,12 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
         fieldsUpdated = true;
       }
       
+      // Load misc note from memory
+      if (data.misc_note && !otherFeesNote) {
+        setOtherFeesNote(data.misc_note);
+        fieldsUpdated = true;
+      }
+      
       if (fieldsUpdated) {
         setIsAutoFilled(true);
         toast.success(`🧠 Memory Hit! Loaded details for: ${data.product_title || 'this product'}`);
@@ -193,7 +204,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
     }
   };
 
-  // Product Memory - Save to memory on save (includes dimensions)
+  // Product Memory - Save to memory on save (includes dimensions, fees)
   const saveToProductMemory = async () => {
     if (!order.product_url) return;
     
@@ -208,6 +219,8 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
       length_in: pricing.length_in || null,
       width_in: pricing.width_in || null,
       height_in: pricing.height_in || null,
+      misc_fee: pricing.other_fees || null,
+      misc_note: otherFeesNote || null,
     };
 
     const { error } = await supabase
@@ -215,7 +228,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
       .upsert(memoryData, { onConflict: 'url' });
     
     if (!error) {
-      toast.success('🧠 Product details + dimensions saved to memory!');
+      toast.success('🧠 Product details saved to memory!');
     } else {
       console.error('Failed to save product memory:', error);
     }
