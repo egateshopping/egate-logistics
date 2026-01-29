@@ -354,6 +354,8 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
         const memoryWidth = Number(memoryData.width_in) || 0;
         const memoryHeight = Number(memoryData.height_in) || 0;
         const memoryPrice = Number(memoryData.price) || 0;
+        const memoryMiscFee = Number(memoryData.misc_fee) || 0;
+        const memoryMiscNote = memoryData.misc_note || '';
         
         // Calculate chargeable weight from memory data
         const volumetricWeight = (memoryLength * memoryWidth * memoryHeight) / 139;
@@ -369,12 +371,18 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
           width_in: memoryWidth,
           height_in: memoryHeight,
           international_shipping: calculatedShipping,
+          other_fees: memoryMiscFee,
         }));
+        
+        // Load misc note from memory
+        if (memoryMiscNote) {
+          setOtherFeesNote(memoryMiscNote);
+        }
         
         setIsPriceFetched(true);
         setIsAutoFilled(true);
         
-        toast.success(`⚡ Loaded from Memory: ${memoryData.product_title || 'Product'}`);
+        toast.success(`⚡ Loaded from Memory: ${memoryData.product_title || 'Product'} (Full Details)`);
         setIsFetchingImage(false);
         return; // Stop here - no need to scrape!
       }
