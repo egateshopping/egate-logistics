@@ -11,7 +11,8 @@ const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Find the best matching weight rule based on longest keyword match
-async function findWeightForTitle(title: string): Promise<number | null> {
+// Returns both the weight and the matched keyword for debugging
+async function findWeightForTitle(title: string): Promise<{ weight: number; keyword: string } | null> {
   if (!title) return null;
   
   const { data: rules, error } = await supabase
@@ -30,12 +31,14 @@ async function findWeightForTitle(title: string): Promise<number | null> {
   const sortedRules = rules.sort((a, b) => b.keyword.length - a.keyword.length);
   
   for (const rule of sortedRules) {
+    // Fuzzy matching: check if the title INCLUDES the keyword (case-insensitive)
     if (titleLower.includes(rule.keyword.toLowerCase())) {
       console.log(`Weight match: "${rule.keyword}" → ${rule.weight} lbs for "${title}"`);
-      return rule.weight;
+      return { weight: rule.weight, keyword: rule.keyword };
     }
   }
   
+  console.log(`No weight rule matched for title: "${title}"`);
   return null;
 }
 
@@ -240,9 +243,15 @@ Deno.serve(async (req) => {
     }
 
     // 5. Look up estimated weight from shipping_weight_rules based on title
+    // 5. Look up estimated weight from shipping_weight_rules based on title
     let suggestedWeight: number | null = null;
+    let matchedKeyword: string | null = null;
     if (title) {
-      suggestedWeight = await findWeightForTitle(title);
+      const weightResult = await findWeightForTitle(title);
+      if (weightResult) {
+        suggestedWeight = weightResult.weight;
+        matchedKeyword = weightResult.keyword;
+      }
     }
 
     return new Response(
@@ -251,6 +260,7 @@ Deno.serve(async (req) => {
         title: title,
         suggested_price: suggestedPrice,
         suggested_weight: suggestedWeight,
+        matched_keyword: matchedKeyword,
         category: category,
         success: !!(imageUrl || title || suggestedPrice || suggestedWeight)
       }),
