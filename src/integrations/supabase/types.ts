@@ -215,6 +215,8 @@ export type Database = {
           height_in: number | null
           image_url: string | null
           length_in: number | null
+          misc_fee: number | null
+          misc_note: string | null
           price: number | null
           product_title: string | null
           updated_at: string
@@ -226,6 +228,8 @@ export type Database = {
           height_in?: number | null
           image_url?: string | null
           length_in?: number | null
+          misc_fee?: number | null
+          misc_note?: string | null
           price?: number | null
           product_title?: string | null
           updated_at?: string
@@ -237,6 +241,8 @@ export type Database = {
           height_in?: number | null
           image_url?: string | null
           length_in?: number | null
+          misc_fee?: number | null
+          misc_note?: string | null
           price?: number | null
           product_title?: string | null
           updated_at?: string
