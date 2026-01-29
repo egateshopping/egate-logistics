@@ -107,53 +107,82 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
-  // Smart Product Memory - Check cache when pricing dialog opens
-  const checkProductCache = async () => {
+  // Product Memory - Load saved product details when dialog opens
+  const loadProductMemory = async () => {
     if (!order.product_url) return;
     
-    const { data } = await supabase
-      .from('product_cache')
+    const { data, error } = await supabase
+      .from('product_memory')
       .select('*')
       .eq('url', order.product_url)
-      .single();
+      .maybeSingle();
+
+    if (error) {
+      console.error('Failed to load product memory:', error);
+      return;
+    }
 
     if (data) {
-      setPricing(prev => ({
-        ...prev,
-        weight_lbs: data.weight_lbs || prev.weight_lbs,
-        length_in: data.length_in || prev.length_in,
-        width_in: data.width_in || prev.width_in,
-        height_in: data.height_in || prev.height_in,
-      }));
+      let fieldsUpdated = false;
+      
+      // Only auto-fill if fields are currently empty (don't overwrite user input)
+      setPricing(prev => {
+        const updates: any = { ...prev };
+        
+        if (data.weight && !prev.weight_lbs) {
+          updates.weight_lbs = data.weight;
+          // Also calculate shipping
+          updates.international_shipping = Math.round(data.weight * shippingRate * 100) / 100;
+          fieldsUpdated = true;
+        }
+        if (data.price && !prev.base_item_cost) {
+          updates.base_item_cost = data.price;
+          updates.tax = Math.round(data.price * 0.1 * 100) / 100; // 10% tax
+          fieldsUpdated = true;
+        }
+        
+        return updates;
+      });
+      
       if (data.image_url && !productImageUrl) {
         setProductImageUrl(data.image_url);
+        fieldsUpdated = true;
       }
-      setIsAutoFilled(true);
+      
+      if (fieldsUpdated) {
+        setIsAutoFilled(true);
+        toast.success('⚡ Details auto-filled from history!');
+      }
     }
   };
 
-  // Smart Product Memory - Save to cache on save
-  const saveToProductCache = async () => {
+  // Product Memory - Save to memory on save
+  const saveToProductMemory = async () => {
     if (!order.product_url) return;
     
-    const cacheData = {
+    const memoryData = {
       url: order.product_url,
-      weight_lbs: pricing.weight_lbs || null,
-      length_in: pricing.length_in || null,
-      width_in: pricing.width_in || null,
-      height_in: pricing.height_in || null,
+      product_title: order.product_title || null,
       image_url: productImageUrl || null,
+      weight: pricing.weight_lbs || null,
+      price: pricing.base_item_cost || null,
     };
 
-    await supabase
-      .from('product_cache')
-      .upsert(cacheData, { onConflict: 'url' });
+    const { error } = await supabase
+      .from('product_memory')
+      .upsert(memoryData, { onConflict: 'url' });
+    
+    if (!error) {
+      toast.success('🧠 Product details saved to memory!');
+    } else {
+      console.error('Failed to save product memory:', error);
+    }
   };
 
-  // Load cache when dialog opens
+  // Load memory when dialog opens
   useEffect(() => {
     if (isPricingDialogOpen) {
-      checkProductCache();
+      loadProductMemory();
     }
   }, [isPricingDialogOpen]);
 
@@ -197,8 +226,8 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
       })
       .eq('id', order.id);
 
-    // Save to product cache for future orders
-    await saveToProductCache();
+    // Save to product memory for future orders
+    await saveToProductMemory();
 
     setIsSaving(false);
 
@@ -323,8 +352,8 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
       })
       .eq('id', order.id);
 
-    // Save to product cache for future orders
-    await saveToProductCache();
+    // Save to product memory for future orders
+    await saveToProductMemory();
 
     setIsSavingPricing(false);
 
