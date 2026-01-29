@@ -14,6 +14,9 @@ interface WeightRule {
   id: string;
   keyword: string;
   weight: number;
+  default_length: number | null;
+  default_width: number | null;
+  default_height: number | null;
   created_at: string;
 }
 
@@ -27,6 +30,9 @@ export default function AdminWeightSettings() {
   const [isSaving, setIsSaving] = useState(false);
   const [newKeyword, setNewKeyword] = useState('');
   const [newWeight, setNewWeight] = useState('');
+  const [newLength, setNewLength] = useState('');
+  const [newWidth, setNewWidth] = useState('');
+  const [newHeight, setNewHeight] = useState('');
 
   useEffect(() => {
     if (!authLoading && (!user || !isAdmin)) {
@@ -77,9 +83,20 @@ export default function AdminWeightSettings() {
     }
 
     setIsSaving(true);
+    
+    const ruleData: any = { 
+      keyword: newKeyword.toLowerCase().trim(), 
+      weight 
+    };
+    
+    // Add optional dimensions
+    if (newLength) ruleData.default_length = parseFloat(newLength);
+    if (newWidth) ruleData.default_width = parseFloat(newWidth);
+    if (newHeight) ruleData.default_height = parseFloat(newHeight);
+    
     const { error } = await supabase
       .from('shipping_weight_rules')
-      .insert({ keyword: newKeyword.toLowerCase().trim(), weight });
+      .insert(ruleData);
 
     if (error) {
       toast({
@@ -96,6 +113,9 @@ export default function AdminWeightSettings() {
       });
       setNewKeyword('');
       setNewWeight('');
+      setNewLength('');
+      setNewWidth('');
+      setNewHeight('');
       fetchRules();
     }
     setIsSaving(false);
@@ -163,10 +183,10 @@ export default function AdminWeightSettings() {
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">Add New Rule</CardTitle>
             <CardDescription>
-              Enter a keyword (e.g., "iphone", "jacket") and its estimated weight in lbs.
+              Enter a keyword, weight, and optional default dimensions (L×W×H in inches).
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <div className="flex gap-3 items-end">
               <div className="flex-1 space-y-1">
                 <Label htmlFor="new-keyword" className="text-xs text-muted-foreground">Keyword</Label>
@@ -189,6 +209,42 @@ export default function AdminWeightSettings() {
                   value={newWeight}
                   onChange={(e) => setNewWeight(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAddRule()}
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-3 items-end">
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs text-muted-foreground">Default L (in)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  placeholder="12"
+                  value={newLength}
+                  onChange={(e) => setNewLength(e.target.value)}
+                />
+              </div>
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs text-muted-foreground">Default W (in)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  placeholder="8"
+                  value={newWidth}
+                  onChange={(e) => setNewWidth(e.target.value)}
+                />
+              </div>
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs text-muted-foreground">Default H (in)</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  placeholder="5"
+                  value={newHeight}
+                  onChange={(e) => setNewHeight(e.target.value)}
                 />
               </div>
               <Button onClick={handleAddRule} disabled={isSaving}>
@@ -219,12 +275,17 @@ export default function AdminWeightSettings() {
                     key={rule.id}
                     className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border border-border hover:bg-muted/50 transition-colors"
                   >
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 flex-wrap">
                       <code className="text-sm font-medium bg-primary/10 text-primary px-2 py-1 rounded">
                         {rule.keyword}
                       </code>
                       <span className="text-muted-foreground">→</span>
                       <span className="font-semibold">{rule.weight} lbs</span>
+                      {(rule.default_length || rule.default_width || rule.default_height) && (
+                        <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+                          📦 {rule.default_length || 0}×{rule.default_width || 0}×{rule.default_height || 0} in
+                        </span>
+                      )}
                     </div>
                     <Button
                       variant="ghost"
