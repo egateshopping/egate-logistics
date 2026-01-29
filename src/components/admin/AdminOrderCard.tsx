@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { 
   Package, MessageCircle, User, Phone, Calendar, 
   ChevronDown, ChevronUp, Truck, Image, DollarSign,
@@ -35,6 +36,12 @@ import { toast } from 'sonner';
 import { format } from 'date-fns';
 import type { Order, OrderStatus, Profile } from '@/lib/supabase';
 import { getStatusLabel, getStatusColor } from '@/lib/supabase';
+
+interface WeightRule {
+  id: string;
+  keyword: string;
+  weight: number;
+}
 
 interface AdminOrderCardProps {
   order: Order;
@@ -82,6 +89,23 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
   const [isAutoFilled, setIsAutoFilled] = useState(false);
   const [isPriceFetched, setIsPriceFetched] = useState(false);
   const [shippingRate, setShippingRate] = useState(8.00);
+
+  // Fetch weight rules from database (client-side)
+  const { data: weightRules = [] } = useQuery<WeightRule[]>({
+    queryKey: ['shipping-weight-rules'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('shipping_weight_rules')
+        .select('id, keyword, weight');
+      if (error) {
+        console.error('Failed to fetch weight rules:', error);
+        return [];
+      }
+      // Sort by keyword length (longest first) for priority matching
+      return (data || []).sort((a, b) => b.keyword.length - a.keyword.length);
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
 
   // Smart Product Memory - Check cache when pricing dialog opens
   const checkProductCache = async () => {
@@ -232,34 +256,44 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
         hasUpdates = true;
       }
 
-      // Handle weight estimation from database rules (via edge function)
-      if (data?.suggested_weight && data.suggested_weight > 0) {
-        // Step A: Force update weight state directly
-        const newWeight = data.suggested_weight;
-        // Step B: Manually calculate shipping immediately (don't rely on useEffect)
-        const calculatedShipping = Math.round(newWeight * shippingRate * 100) / 100;
+      // CLIENT-SIDE WEIGHT MATCHING - Bypass server-side RLS issues
+      const title = data?.title;
+      if (title && weightRules.length > 0) {
+        const titleLower = title.toLowerCase();
         
-        setPricing(prev => ({
-          ...prev,
-          weight_lbs: newWeight, // Force set weight
-          international_shipping: calculatedShipping, // Force set shipping
-        }));
-        hasUpdates = true;
+        // Find matching rule (rules already sorted by keyword length, longest first)
+        const matchedRule = weightRules.find(rule => 
+          titleLower.includes(rule.keyword.toLowerCase())
+        );
         
-        // Debug toast showing matched rule with weight applied
-        if (data?.matched_keyword) {
-          toast.success(`⚖️ Auto-filled Weight: ${newWeight} lbs (Rule: "${data.matched_keyword}")`);
+        if (matchedRule) {
+          // Step A: Force update weight state directly
+          const newWeight = matchedRule.weight;
+          // Step B: Manually calculate shipping immediately
+          const calculatedShipping = Math.round(newWeight * shippingRate * 100) / 100;
+          
+          setPricing(prev => ({
+            ...prev,
+            weight_lbs: newWeight, // Force set weight
+            international_shipping: calculatedShipping, // Force set shipping
+          }));
+          hasUpdates = true;
+          
+          // Debug toast showing matched rule
+          toast.success(`⚖️ Auto-filled Weight: ${newWeight} lbs (Rule: "${matchedRule.keyword}")`);
+        } else {
+          // No weight match found
+          toast.warning(`⚠️ No weight rule matched for: "${title}"`);
         }
-      } else if (data?.title) {
-        // No weight match found but we have a title
-        toast.warning(`⚠️ No weight rule matched for: "${data.title}"`);
+      } else if (title) {
+        // No rules loaded
+        toast.warning(`⚠️ No weight rules available`);
       }
 
       if (hasUpdates) {
         const parts = [];
         if (data?.image) parts.push('image');
         if (data?.suggested_price) parts.push(`price ($${data.suggested_price})`);
-        if (data?.suggested_weight) parts.push(`weight (${data.suggested_weight} lbs)`);
         toast.success(`Found: ${parts.join(', ')}`);
       } else {
         toast.error('No data found - please add manually');
