@@ -288,6 +288,27 @@ export type Database = {
         }
         Relationships: []
       }
+      shipping_weight_rules: {
+        Row: {
+          created_at: string
+          id: string
+          keyword: string
+          weight: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          keyword: string
+          weight: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          keyword?: string
+          weight?: number
+        }
+        Relationships: []
+      }
       stores: {
         Row: {
           category: string

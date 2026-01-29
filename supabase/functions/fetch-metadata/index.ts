@@ -1,7 +1,43 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
+
+// Initialize Supabase client for weight rules lookup
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Find the best matching weight rule based on longest keyword match
+async function findWeightForTitle(title: string): Promise<number | null> {
+  if (!title) return null;
+  
+  const { data: rules, error } = await supabase
+    .from('shipping_weight_rules')
+    .select('keyword, weight')
+    .order('keyword', { ascending: false }); // Will sort by keyword length in JS
+  
+  if (error || !rules || rules.length === 0) {
+    console.log('No weight rules found or error:', error);
+    return null;
+  }
+  
+  const titleLower = title.toLowerCase();
+  
+  // Sort by keyword length (longest first) for priority matching
+  const sortedRules = rules.sort((a, b) => b.keyword.length - a.keyword.length);
+  
+  for (const rule of sortedRules) {
+    if (titleLower.includes(rule.keyword.toLowerCase())) {
+      console.log(`Weight match: "${rule.keyword}" → ${rule.weight} lbs for "${title}"`);
+      return rule.weight;
+    }
+  }
+  
+  return null;
+}
 
 // Enhance image URLs for specific stores to get higher quality images
 function enhanceImageUrl(imageUrl: string, pageUrl: string): string {
@@ -203,13 +239,20 @@ Deno.serve(async (req) => {
       suggestedPrice = null;
     }
 
+    // 5. Look up estimated weight from shipping_weight_rules based on title
+    let suggestedWeight: number | null = null;
+    if (title) {
+      suggestedWeight = await findWeightForTitle(title);
+    }
+
     return new Response(
       JSON.stringify({ 
         image: imageUrl,
         title: title,
         suggested_price: suggestedPrice,
+        suggested_weight: suggestedWeight,
         category: category,
-        success: !!(imageUrl || title || suggestedPrice)
+        success: !!(imageUrl || title || suggestedPrice || suggestedWeight)
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
