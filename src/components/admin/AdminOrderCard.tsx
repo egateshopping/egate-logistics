@@ -107,14 +107,27 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
+  // Helper: Normalize URL by removing query parameters for consistent matching
+  const cleanUrl = (url: string): string => {
+    try {
+      const urlObj = new URL(url);
+      return `${urlObj.origin}${urlObj.pathname}`;
+    } catch {
+      // Fallback: just split on ? if URL parsing fails
+      return url.split('?')[0];
+    }
+  };
+
   // Product Memory - Load saved product details when dialog opens
   const loadProductMemory = async () => {
     if (!order.product_url) return;
     
+    const normalizedUrl = cleanUrl(order.product_url);
+    
     const { data, error } = await supabase
       .from('product_memory')
       .select('*')
-      .eq('url', order.product_url)
+      .eq('url', normalizedUrl)
       .maybeSingle();
 
     if (error) {
@@ -151,8 +164,10 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
       
       if (fieldsUpdated) {
         setIsAutoFilled(true);
-        toast.success('⚡ Details auto-filled from history!');
+        toast.success(`🧠 Memory Hit! Loaded details for: ${data.product_title || 'this product'}`);
       }
+    } else {
+      console.log('No memory for this URL:', normalizedUrl);
     }
   };
 
@@ -160,8 +175,10 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
   const saveToProductMemory = async () => {
     if (!order.product_url) return;
     
+    const normalizedUrl = cleanUrl(order.product_url);
+    
     const memoryData = {
-      url: order.product_url,
+      url: normalizedUrl,
       product_title: order.product_title || null,
       image_url: productImageUrl || null,
       weight: pricing.weight_lbs || null,
