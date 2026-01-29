@@ -212,28 +212,37 @@ export type Database = {
       }
       product_memory: {
         Row: {
+          height_in: number | null
           image_url: string | null
+          length_in: number | null
           price: number | null
           product_title: string | null
           updated_at: string
           url: string
           weight: number | null
+          width_in: number | null
         }
         Insert: {
+          height_in?: number | null
           image_url?: string | null
+          length_in?: number | null
           price?: number | null
           product_title?: string | null
           updated_at?: string
           url: string
           weight?: number | null
+          width_in?: number | null
         }
         Update: {
+          height_in?: number | null
           image_url?: string | null
+          length_in?: number | null
           price?: number | null
           product_title?: string | null
           updated_at?: string
           url?: string
           weight?: number | null
+          width_in?: number | null
         }
         Relationships: []
       }
