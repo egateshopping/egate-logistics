@@ -1,4 +1,3 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { DOMParser } from "https://deno.land/x/deno_dom/deno-dom-wasm.ts";
 
 const corsHeaders = {
@@ -6,76 +5,30 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-// Initialize Supabase client for weight rules lookup
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-// Find the best matching weight rule based on longest keyword match
-async function findWeightForTitle(title: string): Promise<{ weight: number; keyword: string; dims: { l: number; w: number; h: number } } | null> {
-  if (!title) return null;
-  
-  const { data: rules, error } = await supabase
-    .from('shipping_weight_rules')
-    .select('keyword, weight, default_length, default_width, default_height');
-  
-  if (error || !rules || rules.length === 0) {
-    console.log('No weight rules found or error:', error);
-    return null;
-  }
-  
-  const titleLower = title.toLowerCase();
-  
-  // Sort by keyword length (longest first) for priority matching
-  const sortedRules = rules.sort((a, b) => b.keyword.length - a.keyword.length);
-  
-  for (const rule of sortedRules) {
-    if (titleLower.includes(rule.keyword.toLowerCase())) {
-      console.log(`Weight match: "${rule.keyword}" → ${rule.weight} lbs for "${title}"`);
-      return { 
-        weight: rule.weight, 
-        keyword: rule.keyword,
-        dims: {
-          l: rule.default_length || 0,
-          w: rule.default_width || 0,
-          h: rule.default_height || 0
-        }
-      };
-    }
-  }
-  
-  console.log(`No weight rule matched for title: "${title}"`);
-  return null;
-}
-
-// Enhance image URLs for specific stores
-function enhanceImageUrl(imageUrl: string, pageUrl: string): string {
+// ------------------------------------------------------------------
+// 🛠️ Helper: Extract keywords from URL path
+// ------------------------------------------------------------------
+function extractFromUrl(urlString: string): string {
   try {
-    const urlLower = pageUrl.toLowerCase();
+    const url = new URL(urlString);
+    const pathSegments = url.pathname.split('/').filter(s => s.length > 0);
     
-    if (urlLower.includes('asos.com')) {
-      return imageUrl.replace(/wid=\d+/gi, 'wid=1080');
+    let slug = "";
+    
+    if (pathSegments.length > 0) {
+      const lastSegment = pathSegments[pathSegments.length - 1];
+      // If last segment is a product code (e.g., KI6678.html), take the previous one
+      if ((lastSegment.includes('.html') || lastSegment.match(/^[A-Z0-9]+$/)) && pathSegments.length > 1) {
+        slug = pathSegments[pathSegments.length - 2];
+      } else {
+        slug = lastSegment.replace('.html', '');
+      }
     }
-    
-    if (urlLower.includes('amazon.')) {
-      return imageUrl.replace(/\._[A-Z0-9_,]+_\.(jpg|jpeg|png|gif|webp)/gi, '.$1');
-    }
-    
-    if (urlLower.includes('nike.com')) {
-      return imageUrl.replace(/wid=\d+/gi, 'wid=1200').replace(/hei=\d+/gi, 'hei=1200');
-    }
-    
-    if (urlLower.includes('zara.com')) {
-      return imageUrl.replace(/w=\d+/gi, 'w=1200');
-    }
-    
-    if (urlLower.includes('hm.com')) {
-      return imageUrl.replace(/width=\d+/gi, 'width=1200');
-    }
-    
-    return imageUrl;
+
+    // Clean: replace dashes with spaces
+    return slug.replace(/-/g, ' ');
   } catch {
-    return imageUrl;
+    return "";
   }
 }
 
@@ -86,7 +39,7 @@ Deno.serve(async (req) => {
 
   try {
     const { url } = await req.json();
-    console.log("Fetching metadata for:", url);
+    console.log("🚀 Fetching metadata for:", url);
 
     if (!url) {
       return new Response(
@@ -95,19 +48,42 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Fetch with browser-like headers
-    const response = await fetch(url, {
+    // 1. Parse URL first (first line of defense)
+    const urlKeywords = extractFromUrl(url);
+    console.log("🔗 URL Keywords:", urlKeywords);
+
+    // 2. Anti-blocking strategy with multiple user agents
+    const userAgents = {
+      browser: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      googleBot: "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+    };
+
+    let response = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": userAgents.browser,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
       }
     });
 
+    // 3. If blocked (403/401), retry as Googlebot
+    if (response.status === 403 || response.status === 401) {
+      console.log("⚠️ Blocked as Browser. Retrying as Googlebot... 🤖");
+      response = await fetch(url, { headers: { "User-Agent": userAgents.googleBot } });
+    }
+
+    // If fetch completely failed, use URL fallback
     if (!response.ok) {
-      console.log(`Failed to fetch: ${response.status}`);
+      console.warn(`Failed to fetch content, using URL fallback.`);
       return new Response(
-        JSON.stringify({ error: 'Could not fetch page', success: false }),
+        JSON.stringify({
+          title: urlKeywords || "Product Item",
+          description: `Extracted from URL: ${urlKeywords}`,
+          image: "",
+          price: "0",
+          url: url,
+          success: true
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -122,22 +98,22 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Core variables
     let title = "";
     let description = "";
     let image = "";
     let price = "";
     let category = "";
-    let currency = "";
 
     // ---------------------------------------------------------
-    // Strategy 1: JSON-LD (Gold standard for Nike, Adidas, etc.)
+    // Strategy 1: JSON-LD (Gold standard for Nike, Adidas)
     // ---------------------------------------------------------
     const scripts = doc.querySelectorAll('script[type="application/ld+json"]');
     for (const script of scripts) {
       try {
         const json = JSON.parse(script.textContent || "");
         const dataArray = Array.isArray(json) ? json : [json];
-        
+
         // Handle @graph structure
         let items: any[] = [];
         for (const item of dataArray) {
@@ -147,12 +123,12 @@ Deno.serve(async (req) => {
             items.push(item);
           }
         }
-        
+
         for (const item of items) {
           const itemType = item["@type"];
-          const isProduct = itemType === "Product" || 
-                           (Array.isArray(itemType) && itemType.includes("Product"));
-          
+          const isProduct = itemType === "Product" ||
+            (Array.isArray(itemType) && itemType.includes("Product"));
+
           if (isProduct) {
             title = item.name || title;
             image = (Array.isArray(item.image) ? item.image[0] : item.image) || image;
@@ -162,7 +138,6 @@ Deno.serve(async (req) => {
             if (item.offers) {
               const offer = Array.isArray(item.offers) ? item.offers[0] : item.offers;
               price = String(offer.price || offer.lowPrice || price);
-              currency = offer.priceCurrency || currency;
             }
           }
 
@@ -172,7 +147,7 @@ Deno.serve(async (req) => {
               .map((el: any) => el.name || el.item?.name)
               .filter(Boolean);
             if (parts.length > 0) {
-              category = parts.slice(-2).join(" • ");
+              category = parts.join(" • ");
             }
           }
         }
@@ -182,35 +157,36 @@ Deno.serve(async (req) => {
     }
 
     // ---------------------------------------------------------
-    // Strategy 2: Meta Tags & Open Graph
+    // Strategy 2: Meta Tags & Open Graph (fallback)
     // ---------------------------------------------------------
     if (!title) {
-      title = doc.querySelector('meta[property="og:title"]')?.getAttribute("content") || 
-              doc.querySelector('title')?.textContent || "";
+      title = doc.querySelector('meta[property="og:title"]')?.getAttribute("content") ||
+        doc.querySelector('title')?.textContent || "";
     }
-    
+
     if (!image) {
-      image = doc.querySelector('meta[property="og:image"]')?.getAttribute("content") || 
-              doc.querySelector('meta[name="twitter:image"]')?.getAttribute("content") || "";
+      image = doc.querySelector('meta[property="og:image"]')?.getAttribute("content") ||
+        doc.querySelector('meta[name="twitter:image"]')?.getAttribute("content") || "";
     }
 
     if (!description) {
-      description = doc.querySelector('meta[property="og:description"]')?.getAttribute("content") || 
-                    doc.querySelector('meta[name="description"]')?.getAttribute("content") || "";
+      description = doc.querySelector('meta[property="og:description"]')?.getAttribute("content") ||
+        doc.querySelector('meta[name="description"]')?.getAttribute("content") || "";
     }
 
     if (!price) {
       price = doc.querySelector('meta[property="product:price:amount"]')?.getAttribute("content") ||
-              doc.querySelector('meta[property="og:price:amount"]')?.getAttribute("content") || "";
+        doc.querySelector('meta[property="og:price:amount"]')?.getAttribute("content") || "";
     }
 
-    if (!currency) {
-      currency = doc.querySelector('meta[property="product:price:currency"]')?.getAttribute("content") ||
-                 doc.querySelector('meta[property="og:price:currency"]')?.getAttribute("content") || "";
+    // Adidas-specific price selectors
+    if (!price) {
+      const priceEl = doc.querySelector('.gl-price-item') || doc.querySelector('[data-auto-id="product-price"]');
+      if (priceEl) price = priceEl.textContent || "";
     }
 
     // ---------------------------------------------------------
-    // Strategy 3: Fallback text search for price
+    // Strategy 3: Fallback text search for price ($)
     // ---------------------------------------------------------
     if (!price) {
       const bodyText = doc.body?.textContent || "";
@@ -221,71 +197,47 @@ Deno.serve(async (req) => {
     }
 
     // ---------------------------------------------------------
-    // Cleaning & Processing
+    // Cleaning & Merging (The Magic Mix) 🧪
     // ---------------------------------------------------------
-    
+
     // Clean title (remove site name suffixes)
-    const originalTitle = title;
     title = title.split('|')[0].split(' - ')[0].trim();
-    
-    // Combine title with category for richer description
-    let combinedTitle = title;
-    if (category && !title.toLowerCase().includes(category.toLowerCase())) {
-      combinedTitle = `${title} • ${category}`;
-    }
 
-    // Enhance image URL based on store
-    if (image) {
-      image = enhanceImageUrl(image, url);
-    }
-
-    // Parse price as number
+    // Clean price
+    const cleanPrice = price ? price.replace(/[^0-9.]/g, '') : "0";
     let suggestedPrice: number | null = null;
-    if (price) {
-      const parsed = parseFloat(String(price).replace(/[^0-9.]/g, ''));
+    if (cleanPrice) {
+      const parsed = parseFloat(cleanPrice);
       if (!isNaN(parsed) && parsed > 0 && parsed < 100000) {
         suggestedPrice = parsed;
       }
     }
 
-    // ---------------------------------------------------------
-    // Weight & Dimensions Lookup
-    // ---------------------------------------------------------
-    let suggestedWeight: number | null = null;
-    let matchedKeyword: string | null = null;
-    let defaultDims = { l: 0, w: 0, h: 0 };
-    
-    // Use combined title + description for matching
-    const searchText = `${originalTitle} ${description} ${category}`;
-    const weightResult = await findWeightForTitle(searchText);
-    
-    if (weightResult) {
-      suggestedWeight = weightResult.weight;
-      matchedKeyword = weightResult.keyword;
-      defaultDims = weightResult.dims;
-    }
+    // ✅ Merge all info into rich description for weight keyword matching
+    // Order: Official description + Category tree + URL keywords
+    const richDescription = `${description} ${category} ${urlKeywords}`.trim();
 
-    console.log("Extracted:", { title, image: image?.substring(0, 50), price: suggestedPrice, weight: suggestedWeight });
+    // Use URL keywords as title fallback
+    const displayTitle = title || urlKeywords || "New Product";
+
+    console.log(`✅ Success: ${displayTitle} [$${cleanPrice}]`);
 
     return new Response(
-      JSON.stringify({ 
-        title: combinedTitle,
-        image,
+      JSON.stringify({
+        title: displayTitle,
+        description: richDescription, // Rich description for weight matching
+        image: image,
+        price: cleanPrice,
         suggested_price: suggestedPrice,
-        suggested_weight: suggestedWeight,
-        matched_keyword: matchedKeyword,
-        default_length: defaultDims.l || null,
-        default_width: defaultDims.w || null,
-        default_height: defaultDims.h || null,
-        category,
-        currency,
-        success: !!(image || title || suggestedPrice || suggestedWeight)
+        category: category,
+        url: url,
+        success: !!(image || displayTitle || suggestedPrice)
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error: unknown) {
-    console.error('Error fetching metadata:', error);
+    console.error("❌ Error:", error);
     return new Response(
       JSON.stringify({ error: 'Could not fetch metadata', success: false }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
