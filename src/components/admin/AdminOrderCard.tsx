@@ -241,6 +241,14 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
           international_shipping: prev.weight_lbs ? prev.international_shipping : calculatedShipping,
         }));
         hasUpdates = true;
+        
+        // Debug toast showing matched rule
+        if (data?.matched_keyword) {
+          toast.success(`✅ Matched rule: "${data.matched_keyword}" → ${data.suggested_weight} lbs`);
+        }
+      } else if (data?.title) {
+        // No weight match found but we have a title
+        toast.warning('⚠️ No matching weight rule found for this title');
       }
 
       if (hasUpdates) {
