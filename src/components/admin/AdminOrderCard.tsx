@@ -81,6 +81,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
   const [isFetchingImage, setIsFetchingImage] = useState(false);
   const [isAutoFilled, setIsAutoFilled] = useState(false);
   const [isPriceFetched, setIsPriceFetched] = useState(false);
+  const [shippingRate, setShippingRate] = useState(8.00);
 
   // Smart Product Memory - Check cache when pricing dialog opens
   const checkProductCache = async () => {
@@ -565,6 +566,60 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
                           <p className="text-xs text-muted-foreground">Tax auto-calculates at 10%</p>
                         </div>
                         
+                        {/* Shipping Calculator Section */}
+                        <div className="space-y-2 p-3 bg-muted/30 rounded-lg border border-border">
+                          <Label className="text-xs text-muted-foreground font-medium">📦 Shipping Calculator</Label>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label htmlFor="weight-lbs" className="text-xs text-muted-foreground">Weight (lbs)</Label>
+                              <Input
+                                id="weight-lbs"
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                value={pricing.weight_lbs || ''}
+                                onChange={(e) => {
+                                  const weight = parseFloat(e.target.value) || 0;
+                                  const calculatedShipping = Math.round(weight * shippingRate * 100) / 100;
+                                  setPricing(prev => ({
+                                    ...prev,
+                                    weight_lbs: weight,
+                                    international_shipping: calculatedShipping,
+                                  }));
+                                }}
+                                placeholder="0.0"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label htmlFor="rate-per-lb" className="text-xs text-muted-foreground">Rate per lb ($)</Label>
+                              <Input
+                                id="rate-per-lb"
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={shippingRate}
+                                onChange={(e) => {
+                                  const rate = parseFloat(e.target.value) || 0;
+                                  setShippingRate(rate);
+                                  if (pricing.weight_lbs > 0) {
+                                    const calculatedShipping = Math.round(pricing.weight_lbs * rate * 100) / 100;
+                                    setPricing(prev => ({
+                                      ...prev,
+                                      international_shipping: calculatedShipping,
+                                    }));
+                                  }
+                                }}
+                                placeholder="8.00"
+                              />
+                            </div>
+                          </div>
+                          {pricing.weight_lbs > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              {pricing.weight_lbs} lbs × ${shippingRate.toFixed(2)} = <strong className="text-primary">${pricing.international_shipping.toFixed(2)}</strong>
+                            </p>
+                          )}
+                        </div>
+
                         <div className="space-y-1">
                           <Label htmlFor="intl-shipping" className="text-xs text-muted-foreground">International Shipping ($)</Label>
                           <Input
