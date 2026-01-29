@@ -315,18 +315,68 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
 
     setIsFetchingImage(true);
     try {
-      // 2. Fetch Weight Rules DIRECTLY from DB (The Guarantee)
-      // This ensures we have the latest rules loaded right now.
+      // Clean URL for memory lookup
+      const normalizedUrl = cleanUrl(order.product_url);
+
+      // ---------------------------------------------------------
+      // PRIORITY #1: Check Product Memory FIRST 🧠
+      // ---------------------------------------------------------
+      const { data: memoryData } = await supabase
+        .from('product_memory')
+        .select('*')
+        .eq('url', normalizedUrl)
+        .maybeSingle();
+
+      if (memoryData) {
+        // Found in memory! Load everything
+        if (memoryData.image_url) {
+          setProductImageUrl(memoryData.image_url);
+        }
+        
+        const memoryWeight = Number(memoryData.weight) || 0;
+        const memoryLength = Number(memoryData.length_in) || 0;
+        const memoryWidth = Number(memoryData.width_in) || 0;
+        const memoryHeight = Number(memoryData.height_in) || 0;
+        const memoryPrice = Number(memoryData.price) || 0;
+        
+        // Calculate chargeable weight from memory data
+        const volumetricWeight = (memoryLength * memoryWidth * memoryHeight) / 139;
+        const chargeableWeight = Math.max(memoryWeight, volumetricWeight);
+        const calculatedShipping = Math.round(chargeableWeight * shippingRate * 100) / 100;
+        
+        setPricing(prev => ({
+          ...prev,
+          base_item_cost: memoryPrice,
+          tax: Math.round(memoryPrice * 0.1 * 100) / 100,
+          weight_lbs: memoryWeight,
+          length_in: memoryLength,
+          width_in: memoryWidth,
+          height_in: memoryHeight,
+          international_shipping: calculatedShipping,
+        }));
+        
+        setIsPriceFetched(true);
+        setIsAutoFilled(true);
+        
+        toast.success(`⚡ Loaded from Memory: ${memoryData.product_title || 'Product'}`);
+        setIsFetchingImage(false);
+        return; // Stop here - no need to scrape!
+      }
+
+      // ---------------------------------------------------------
+      // PRIORITY #2: Not in Memory -> Scrape + Rules Matching
+      // ---------------------------------------------------------
+      
+      // Fetch Weight Rules
       const { data: rulesData, error: rulesError } = await supabase
         .from('shipping_weight_rules')
         .select('*');
 
       if (rulesError) {
         console.error("Error fetching rules:", rulesError);
-        // We continue even if rules fail, just to get the image/price
       }
 
-      // 3. Fetch Product Metadata (The Scraper)
+      // Fetch Product Metadata (The Scraper)
       const { data, error } = await supabase.functions.invoke('fetch-metadata', {
         body: { url: order.product_url }
       });
@@ -358,18 +408,17 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
         hasUpdates = true;
       }
 
-      // 4. The Smart Matching Logic (Client-Side)
-      // Combine Title + Description/Category to catch "Shoes" in the subtitle
+      // Smart Matching Logic (Client-Side)
       const fullText = (
         (data?.title || "") + " " + (data?.category || "")
       ).toLowerCase();
       
-      console.log("🕵️ Analyzing Text:", fullText); // For debugging in console
+      console.log("🕵️ Analyzing Text:", fullText);
 
       let matchedWeight = 0;
       let matchedKeyword = "";
 
-      // Sort rules by length (longest first) to match "basketball shoes" before "shoes"
+      // Sort rules by length (longest first)
       const sortedRules = (rulesData || []).sort((a: WeightRule, b: WeightRule) => 
         b.keyword.length - a.keyword.length
       );
@@ -378,11 +427,11 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
         if (fullText.includes(rule.keyword.toLowerCase())) {
           matchedWeight = Number(rule.weight);
           matchedKeyword = rule.keyword;
-          break; // Stop at the first (best) match
+          break;
         }
       }
 
-      // 5. Apply the Weight (If found)
+      // Apply the Weight (If found)
       if (matchedWeight > 0) {
         const calculatedShipping = Math.round(matchedWeight * shippingRate * 100) / 100;
         
@@ -395,7 +444,6 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
         
         toast.success(`⚖️ Matched: "${matchedKeyword}" → ${matchedWeight} lbs`);
       } else if (data?.title) {
-        // Optional: Warn if no rule matched
         toast("⚠️ Item details fetched, but no weight rule matched.", {
           description: "Try adding a rule for this item type in Settings."
         });
