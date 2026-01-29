@@ -195,38 +195,74 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 3. Try JSON-LD structured data
-    if (!suggestedPrice) {
-      const jsonLdMatches = html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
-      
-      for (const match of jsonLdMatches) {
-        try {
-          const jsonContent = match[1];
-          const data = JSON.parse(jsonContent);
-          
-          // Handle array of objects
-          const items = Array.isArray(data) ? data : [data];
-          
-          for (const item of items) {
-            // Check for Product type
-            if (item['@type'] === 'Product' || item['@type']?.includes?.('Product')) {
-              // Extract price from offers
-              if (item.offers) {
-                const offers = Array.isArray(item.offers) ? item.offers[0] : item.offers;
-                if (offers?.price) {
-                  suggestedPrice = parseFloat(String(offers.price).replace(/[^0-9.]/g, ''));
-                }
-              }
-              // Extract category
-              if (item.category) {
-                category = typeof item.category === 'string' ? item.category : item.category[0];
-              }
-              break;
-            }
-          }
-        } catch {
-          // JSON parse failed, continue to next match
+    // 3. Try JSON-LD structured data - ULTIMATE SCRAPER
+    // Extract name, description/subtitle, and price from JSON-LD
+    let jsonLdName: string | null = null;
+    let jsonLdDescription: string | null = null;
+    
+    const jsonLdMatches = html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+    
+    for (const match of jsonLdMatches) {
+      try {
+        const jsonContent = match[1];
+        const data = JSON.parse(jsonContent);
+        
+        // Handle array of objects or @graph structure
+        let items: any[] = [];
+        if (Array.isArray(data)) {
+          items = data;
+        } else if (data['@graph'] && Array.isArray(data['@graph'])) {
+          items = data['@graph'];
+        } else {
+          items = [data];
         }
+        
+        for (const item of items) {
+          // Check for Product type
+          const itemType = item['@type'];
+          const isProduct = itemType === 'Product' || 
+                           (Array.isArray(itemType) && itemType.includes('Product')) ||
+                           itemType?.includes?.('Product');
+          
+          if (isProduct) {
+            // Extract name (primary product name)
+            if (item.name && !jsonLdName) {
+              jsonLdName = item.name;
+            }
+            
+            // Extract description/subtitle (for combined title)
+            if (item.description && !jsonLdDescription) {
+              // Take first sentence or first 100 chars of description
+              const desc = item.description;
+              const firstSentence = desc.split(/[.!?]/)[0];
+              jsonLdDescription = firstSentence.length < 100 ? firstSentence : desc.substring(0, 100);
+            }
+            
+            // Also try category as subtitle fallback
+            if (!jsonLdDescription && item.category) {
+              jsonLdDescription = typeof item.category === 'string' ? item.category : item.category[0];
+            }
+            
+            // Extract price from offers
+            if (!suggestedPrice && item.offers) {
+              const offers = Array.isArray(item.offers) ? item.offers[0] : item.offers;
+              if (offers?.price) {
+                suggestedPrice = parseFloat(String(offers.price).replace(/[^0-9.]/g, ''));
+              } else if (offers?.lowPrice) {
+                suggestedPrice = parseFloat(String(offers.lowPrice).replace(/[^0-9.]/g, ''));
+              }
+            }
+            
+            // Extract category
+            if (!category && item.category) {
+              category = typeof item.category === 'string' ? item.category : item.category[0];
+            }
+            
+            break; // Found product, stop searching
+          }
+        }
+      } catch {
+        // JSON parse failed, continue to next match
       }
     }
 
@@ -237,10 +273,25 @@ Deno.serve(async (req) => {
       category = categoryMatch?.[1] || null;
     }
 
+    // Build enhanced title from JSON-LD data
+    // Combine name + description/category for rich product title
+    let enhancedTitle: string | null = null;
+    if (jsonLdName) {
+      if (jsonLdDescription && jsonLdDescription !== jsonLdName) {
+        // Combine: "Nike Tiempo Streetgato - Indoor/Court Low-Top Soccer Shoes"
+        enhancedTitle = `${jsonLdName} - ${jsonLdDescription}`;
+      } else {
+        enhancedTitle = jsonLdName;
+      }
+    }
+
     // Validate price is reasonable (not NaN and positive)
     if (suggestedPrice && (isNaN(suggestedPrice) || suggestedPrice <= 0 || suggestedPrice > 100000)) {
       suggestedPrice = null;
     }
+    
+    // Use enhanced title if available, otherwise fall back to og:title
+    const finalTitle = enhancedTitle || title;
 
     // 5. Look up estimated weight from shipping_weight_rules based on title
     // 5. Look up estimated weight from shipping_weight_rules based on title
@@ -257,12 +308,12 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         image: imageUrl,
-        title: title,
+        title: finalTitle,
         suggested_price: suggestedPrice,
         suggested_weight: suggestedWeight,
         matched_keyword: matchedKeyword,
         category: category,
-        success: !!(imageUrl || title || suggestedPrice || suggestedWeight)
+        success: !!(imageUrl || finalTitle || suggestedPrice || suggestedWeight)
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

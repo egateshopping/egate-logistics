@@ -203,6 +203,22 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
     }
   }, [isPricingDialogOpen]);
 
+  // Auto-update international shipping when chargeable weight changes
+  useEffect(() => {
+    const volumetricWeight = (pricing.length_in * pricing.width_in * pricing.height_in) / 139;
+    const chargeableWeight = Math.max(pricing.weight_lbs || 0, volumetricWeight || 0);
+    
+    if (chargeableWeight > 0) {
+      const calculatedShipping = Math.round(chargeableWeight * shippingRate * 100) / 100;
+      setPricing(prev => {
+        if (prev.international_shipping !== calculatedShipping) {
+          return { ...prev, international_shipping: calculatedShipping };
+        }
+        return prev;
+      });
+    }
+  }, [pricing.weight_lbs, pricing.length_in, pricing.width_in, pricing.height_in, shippingRate]);
+
   const calculateTotal = () => {
     const volumetricWeight = (pricing.length_in * pricing.width_in * pricing.height_in) / 139;
     const chargeableWeight = Math.max(pricing.weight_lbs, volumetricWeight);
@@ -618,12 +634,65 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
                           <p className="text-xs text-muted-foreground">Tax auto-calculates at 10%</p>
                         </div>
                         
-                        {/* Shipping Calculator Section */}
-                        <div className="space-y-2 p-3 bg-muted/30 rounded-lg border border-border">
+                        {/* Shipping Calculator Section with Dimensional Weight */}
+                        <div className="space-y-3 p-3 bg-muted/30 rounded-lg border border-border">
                           <Label className="text-xs text-muted-foreground font-medium">📦 Shipping Calculator</Label>
+                          
+                          {/* Dimensions Row */}
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Dimensions (in)</Label>
+                            <div className="grid grid-cols-3 gap-2">
+                              <Input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                value={pricing.length_in || ''}
+                                onChange={(e) => {
+                                  const length = parseFloat(e.target.value) || 0;
+                                  setPricing(prev => ({ ...prev, length_in: length }));
+                                }}
+                                placeholder="L"
+                              />
+                              <Input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                value={pricing.width_in || ''}
+                                onChange={(e) => {
+                                  const width = parseFloat(e.target.value) || 0;
+                                  setPricing(prev => ({ ...prev, width_in: width }));
+                                }}
+                                placeholder="W"
+                              />
+                              <Input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                value={pricing.height_in || ''}
+                                onChange={(e) => {
+                                  const height = parseFloat(e.target.value) || 0;
+                                  setPricing(prev => ({ ...prev, height_in: height }));
+                                }}
+                                placeholder="H"
+                              />
+                            </div>
+                            {/* Volumetric Weight Display */}
+                            {pricing.length_in > 0 && pricing.width_in > 0 && pricing.height_in > 0 && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                📦 Volumetric: <strong className="text-primary">
+                                  {((pricing.length_in * pricing.width_in * pricing.height_in) / 139).toFixed(2)} lbs
+                                </strong>
+                                <span className="text-muted-foreground/60 ml-1">
+                                  ({pricing.length_in}×{pricing.width_in}×{pricing.height_in} ÷ 139)
+                                </span>
+                              </p>
+                            )}
+                          </div>
+                          
+                          {/* Weight and Rate Row */}
                           <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1">
-                              <Label htmlFor="weight-lbs" className="text-xs text-muted-foreground">Weight (lbs)</Label>
+                              <Label htmlFor="weight-lbs" className="text-xs text-muted-foreground">Actual Weight (lbs)</Label>
                               <Input
                                 id="weight-lbs"
                                 type="number"
@@ -632,12 +701,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
                                 value={pricing.weight_lbs || ''}
                                 onChange={(e) => {
                                   const weight = parseFloat(e.target.value) || 0;
-                                  const calculatedShipping = Math.round(weight * shippingRate * 100) / 100;
-                                  setPricing(prev => ({
-                                    ...prev,
-                                    weight_lbs: weight,
-                                    international_shipping: calculatedShipping,
-                                  }));
+                                  setPricing(prev => ({ ...prev, weight_lbs: weight }));
                                 }}
                                 placeholder="0.0"
                               />
@@ -653,23 +717,43 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
                                 onChange={(e) => {
                                   const rate = parseFloat(e.target.value) || 0;
                                   setShippingRate(rate);
-                                  if (pricing.weight_lbs > 0) {
-                                    const calculatedShipping = Math.round(pricing.weight_lbs * rate * 100) / 100;
-                                    setPricing(prev => ({
-                                      ...prev,
-                                      international_shipping: calculatedShipping,
-                                    }));
-                                  }
                                 }}
                                 placeholder="8.00"
                               />
                             </div>
                           </div>
-                          {pricing.weight_lbs > 0 && (
-                            <p className="text-xs text-muted-foreground">
-                              {pricing.weight_lbs} lbs × ${shippingRate.toFixed(2)} = <strong className="text-primary">${pricing.international_shipping.toFixed(2)}</strong>
-                            </p>
-                          )}
+                          
+                          {/* Chargeable Weight & Calculation Display */}
+                          {(() => {
+                            const volumetricWeight = (pricing.length_in * pricing.width_in * pricing.height_in) / 139;
+                            const chargeableWeight = Math.max(pricing.weight_lbs || 0, volumetricWeight || 0);
+                            const calculatedShipping = Math.round(chargeableWeight * shippingRate * 100) / 100;
+                            const isVolumetricHigher = volumetricWeight > (pricing.weight_lbs || 0) && volumetricWeight > 0;
+                            
+                            return chargeableWeight > 0 ? (
+                              <div className="p-2 bg-primary/10 rounded-lg border border-primary/30">
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">
+                                    ⚖️ Chargeable Weight:
+                                  </span>
+                                  <span className="font-bold text-primary">
+                                    {chargeableWeight.toFixed(2)} lbs
+                                    {isVolumetricHigher && (
+                                      <span className="text-xs font-normal ml-1 text-warning">(volumetric)</span>
+                                    )}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between text-sm mt-1">
+                                  <span className="text-muted-foreground">
+                                    {chargeableWeight.toFixed(2)} lbs × ${shippingRate.toFixed(2)} =
+                                  </span>
+                                  <span className="font-bold text-success">
+                                    ${calculatedShipping.toFixed(2)}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : null;
+                          })()}
                         </div>
 
                         <div className="space-y-1">
