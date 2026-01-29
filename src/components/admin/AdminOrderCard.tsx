@@ -285,8 +285,26 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
   const quickTotal = pricing.base_item_cost + pricing.international_shipping + pricing.tax + pricing.other_fees;
 
   const handleAutoFetchImage = async () => {
+    // 1. Check if URL is present
+    if (!order.product_url) {
+      toast.error("Please enter a product URL first");
+      return;
+    }
+
     setIsFetchingImage(true);
     try {
+      // 2. Fetch Weight Rules DIRECTLY from DB (The Guarantee)
+      // This ensures we have the latest rules loaded right now.
+      const { data: rulesData, error: rulesError } = await supabase
+        .from('shipping_weight_rules')
+        .select('*');
+
+      if (rulesError) {
+        console.error("Error fetching rules:", rulesError);
+        // We continue even if rules fail, just to get the image/price
+      }
+
+      // 3. Fetch Product Metadata (The Scraper)
       const { data, error } = await supabase.functions.invoke('fetch-metadata', {
         body: { url: order.product_url }
       });
@@ -318,46 +336,56 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
         hasUpdates = true;
       }
 
-      // CLIENT-SIDE WEIGHT MATCHING - Bypass server-side RLS issues
-      const title = data?.title;
-      if (title && weightRules.length > 0) {
-        const titleLower = title.toLowerCase();
-        
-        // Find matching rule (rules already sorted by keyword length, longest first)
-        const matchedRule = weightRules.find(rule => 
-          titleLower.includes(rule.keyword.toLowerCase())
-        );
-        
-        if (matchedRule) {
-          // Step A: Force update weight state directly
-          const newWeight = matchedRule.weight;
-          // Step B: Manually calculate shipping immediately
-          const calculatedShipping = Math.round(newWeight * shippingRate * 100) / 100;
-          
-          setPricing(prev => ({
-            ...prev,
-            weight_lbs: newWeight, // Force set weight
-            international_shipping: calculatedShipping, // Force set shipping
-          }));
-          hasUpdates = true;
-          
-          // Debug toast showing matched rule
-          toast.success(`⚖️ Auto-filled Weight: ${newWeight} lbs (Rule: "${matchedRule.keyword}")`);
-        } else {
-          // No weight match found
-          toast.warning(`⚠️ No weight rule matched for: "${title}"`);
+      // 4. The Smart Matching Logic (Client-Side)
+      // Combine Title + Description/Category to catch "Shoes" in the subtitle
+      const fullText = (
+        (data?.title || "") + " " + (data?.category || "")
+      ).toLowerCase();
+      
+      console.log("🕵️ Analyzing Text:", fullText); // For debugging in console
+
+      let matchedWeight = 0;
+      let matchedKeyword = "";
+
+      // Sort rules by length (longest first) to match "basketball shoes" before "shoes"
+      const sortedRules = (rulesData || []).sort((a: WeightRule, b: WeightRule) => 
+        b.keyword.length - a.keyword.length
+      );
+
+      for (const rule of sortedRules) {
+        if (fullText.includes(rule.keyword.toLowerCase())) {
+          matchedWeight = Number(rule.weight);
+          matchedKeyword = rule.keyword;
+          break; // Stop at the first (best) match
         }
-      } else if (title) {
-        // No rules loaded
-        toast.warning(`⚠️ No weight rules available`);
+      }
+
+      // 5. Apply the Weight (If found)
+      if (matchedWeight > 0) {
+        const calculatedShipping = Math.round(matchedWeight * shippingRate * 100) / 100;
+        
+        setPricing(prev => ({
+          ...prev,
+          weight_lbs: matchedWeight,
+          international_shipping: calculatedShipping,
+        }));
+        hasUpdates = true;
+        
+        toast.success(`⚖️ Matched: "${matchedKeyword}" → ${matchedWeight} lbs`);
+      } else if (data?.title) {
+        // Optional: Warn if no rule matched
+        toast("⚠️ Item details fetched, but no weight rule matched.", {
+          description: "Try adding a rule for this item type in Settings."
+        });
       }
 
       if (hasUpdates) {
         const parts = [];
         if (data?.image) parts.push('image');
         if (data?.suggested_price) parts.push(`price ($${data.suggested_price})`);
-        toast.success(`Found: ${parts.join(', ')}`);
-      } else {
+        if (matchedWeight > 0) parts.push(`weight (${matchedWeight} lbs)`);
+        toast.success(`✨ Found: ${parts.join(', ')}`);
+      } else if (!data?.image && !data?.suggested_price) {
         toast.error('No data found - please add manually');
       }
     } catch (err) {
