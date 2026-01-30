@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// 1. دالة البحث في صور جوجل (المنقذ لجميع المواقع الصعبة) 🕵️‍♂️
+// 1. دالة البحث في صور جوجل (تم تحسين Regex لقبول جميع الصيغ) 🕵️‍♂️
 async function searchGoogleImages(query: string): Promise<{ image: string; title: string }> {
   try {
     console.log(`🔎 Fallback: Searching Google Images for: ${query}`);
@@ -21,37 +21,62 @@ async function searchGoogleImages(query: string): Promise<{ image: string; title
 
     const html = await res.text();
 
-    // استخراج أول صورة حقيقية من نتائج جوجل
-    const imgMatch = html.match(/src="(https?:\/\/[^"]+\.(jpg|png|jpeg|webp))"/);
-    const image = imgMatch ? imgMatch[1] : "";
+    // 🔥 التحديث هنا: قبول روابط جوجل المشفرة (tbn)
+    // نبحث عن أول صورة تابعة لجوجل (thumbnails)
+    const googleImgMatch = html.match(/src="(https:\/\/encrypted-tbn0\.gstatic\.com\/images\?q=tbn:[^"]+)"/);
 
-    return { image, title: query };
+    if (googleImgMatch) {
+      return { image: googleImgMatch[1], title: query };
+    }
+
+    // محاولة احتياطية: أي رابط صورة آخر
+    const anyImgMatch = html.match(/src="(https?:\/\/[^"]+\.(jpg|png|jpeg|webp))"/);
+    if (anyImgMatch) {
+      return { image: anyImgMatch[1], title: query };
+    }
+
+    return { image: "", title: "" };
   } catch (e) {
     console.error("Google Fallback Failed:", e);
     return { image: "", title: "" };
   }
 }
 
-// 2. استخراج الكلمات المفتاحية من الرابط بذكاء 🧠
+// 2. استخراج الكلمات المفتاحية واسم الماركة بذكاء 🧠
 function extractKeywords(url: string): string {
   try {
     const urlObj = new URL(url);
-    const pathSegments = urlObj.pathname.split("/").filter((s) => s.length > 2);
 
-    // استراتيجية تومي وأديداس: عادة الاسم يكون في آخر الرابط
-    // مثال: /high-rise-wide-leg-jean/XW05867
-    // نأخذ الأجزاء المهمة وننظفها
-    const interestingParts = pathSegments.filter((s) => !s.match(/^(en|us|product|shop)$/i));
-
-    if (interestingParts.length > 0) {
-      // نأخذ آخر جزأين لزيادة الدقة
-      const keywords = interestingParts.slice(-2).join(" ");
-      return keywords.replace(/[-_]/g, " ").replace(".html", "").replace(/\d+$/, ""); // تنظيف الأرقام الزائدة
+    // استخراج اسم الماركة الصحيح (التعامل مع usa.tommy.com)
+    const hostnameParts = urlObj.hostname.split(".");
+    let brand = hostnameParts[0];
+    // إذا كان النطاق فرعي مثل usa.tommy أو www.amazon، نأخذ الجزء الثاني
+    if (hostnameParts.length > 2 && (brand === "www" || brand === "usa" || brand === "shop" || brand.length < 3)) {
+      brand = hostnameParts[1];
     }
 
-    return "Product Image";
+    const pathSegments = urlObj.pathname.split("/").filter((s) => s.length > 2);
+
+    // تنظيف الرابط من الكلمات غير المهمة
+    const interestingParts = pathSegments.filter(
+      (s) => !s.match(/^(en|us|product|shop|category|clothing|women|men)$/i),
+    );
+
+    let productKeywords = "";
+    if (interestingParts.length > 0) {
+      // نأخذ آخر جزء مع قبل الأخير لضمان الدقة
+      const rawKeywords = interestingParts.slice(-2).join(" ");
+      productKeywords = rawKeywords
+        .replace(/[-_]/g, " ") // حذف الشرطات
+        .replace(".html", "") // حذف الامتداد
+        .replace(/\d{5,}/g, "") // حذف الأرقام الطويلة (أكواد المنتجات)
+        .trim();
+    }
+
+    // النتيجة: اسم الماركة + اسم المنتج
+    return `${brand} ${productKeywords}`.trim();
   } catch (e) {
-    return "Product";
+    return "Product Image";
   }
 }
 
@@ -67,14 +92,12 @@ serve(async (req) => {
     let price = "0";
     let fetchFailed = false;
 
-    // A. المحاولة الأولى: الدخول المباشر (Direct Fetch) 🚪
-    // نحاول الدخول "بالحسنى" للمواقع التي تسمح بذلك (مثل Jomashop)
+    // A. المحاولة الأولى: الدخول المباشر
     try {
       const response = await fetch(url, {
         headers: {
           "User-Agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
           "Accept-Language": "en-US,en;q=0.5",
         },
       });
@@ -83,53 +106,46 @@ serve(async (req) => {
         const html = await response.text();
         const doc = new DOMParser().parseFromString(html, "text/html");
 
-        // محاولة سحب البيانات الرسمية
         title = doc.querySelector('meta[property="og:title"]')?.getAttribute("content") || doc.title || "";
         image = doc.querySelector('meta[property="og:image"]')?.getAttribute("content") || "";
 
-        // سحب السعر (للمواقع المتعاونة)
         const priceMeta =
           doc.querySelector('meta[property="product:price:amount"]') ||
           doc.querySelector('meta[property="og:price:amount"]');
         if (priceMeta) price = priceMeta.getAttribute("content") || "0";
 
-        // إصلاح Jomashop الخاص
+        // Jomashop Fix
         if (url.includes("jomashop") && (!price || price === "0")) {
           const bodyText = doc.body?.textContent || "";
           const match = bodyText.match(/\$\s?([0-9,]+(\.[0-9]{2})?)/);
           if (match) price = match[1];
         }
       } else {
-        console.log(`⚠️ Site blocked access (Status: ${response.status}). Switching to Plan B...`);
+        console.log("⚠️ Access blocked. Switching to Google Fallback.");
         fetchFailed = true;
       }
     } catch (err) {
-      console.log("❌ Direct fetch error. Switching to Plan B...");
       fetchFailed = true;
     }
 
-    // B. المحاولة الثانية: خطة الإنقاذ الشاملة (Universal Fallback) 🪂
-    // تعمل إذا فشل الاتصال (تومي/أديداس/أمازون) أو إذا نجح الاتصال لكن لم نجد صورة
-    if (fetchFailed || !image || image.length < 5) {
+    // B. المحاولة الثانية: Google Fallback (المحدثة) 🌟
+    // تعمل الآن مع روابط الصور المشفرة ومع الماركات الفرعية
+    if (fetchFailed || !image || image.length < 5 || image.includes("placeholder")) {
       const keywords = extractKeywords(url);
-      // إضافة اسم الموقع للبحث لزيادة الدقة
-      const domain = new URL(url).hostname.replace("www.", "").split(".")[0];
-      const searchQuery = `${domain} ${keywords}`.trim();
 
-      const googleData = await searchGoogleImages(searchQuery);
+      // البحث باستخدام الكلمات المستخرجة بدقة
+      const googleData = await searchGoogleImages(keywords);
 
       if (googleData.image) {
         image = googleData.image;
-        console.log("✅ Image rescued via Google!");
       }
 
-      // إذا لم نجد عنواناً من الموقع، نستخدم كلمات البحث كعنوان مؤقت
-      if (!title || title.trim() === "") {
+      // إذا كان العنوان فارغاً أو غير واضح، نستخدم الكلمات المستخرجة
+      if (!title || title.trim() === "" || title.includes("Access Denied")) {
         title = keywords.charAt(0).toUpperCase() + keywords.slice(1);
       }
     }
 
-    // تنظيف السعر
     const cleanPrice = price ? price.replace(/[^0-9.]/g, "") : "0";
 
     return new Response(
