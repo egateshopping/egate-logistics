@@ -6,67 +6,55 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// 1. دالة بحث محسنة جداً (تستخدم واجهة DuckDuckGo JSON لضمان عدم الحظر) 🦆
-async function searchImageBySKU(query: string): Promise<{ image: string; title: string }> {
+// 1. دالة البحث في صور جوجل (المنقذ عند فشل أمازون) 🕵️‍♂️
+async function searchGoogleImages(query: string): Promise<{ image: string; title: string }> {
   try {
-    console.log(`🎯 SKU Hunter: Searching for '${query}'`);
-    // نستخدم DuckDuckGo API لأنه لا يحظر السيرفرات ويعطي JSON مباشر
-    const url = `https://duckduckgo.com/i.js?q=${encodeURIComponent(query)}&o=json`;
+    console.log(`🔎 Google Fallback Searching for: ${query}`);
+    // نستخدم واجهة جوجل القديمة لأنها أسرع وأسهل في القراءة
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&tbm=isch&gbv=1`;
 
-    const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0" },
+    const res = await fetch(searchUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      },
     });
 
-    const data = await res.json();
+    const html = await res.text();
 
-    if (data && data.results && data.results.length > 0) {
-      // نأخذ أول صورة لأن البحث بالكود دقيق جداً
-      return { image: data.results[0].image, title: data.results[0].title };
-    }
-    return { image: "", title: "" };
+    // استخراج أول صورة حقيقية
+    const imgMatch = html.match(/src="(https?:\/\/[^"]+\.(jpg|png|jpeg|webp))"/);
+    const image = imgMatch ? imgMatch[1] : "";
+
+    // محاولة تخمين العنوان من نتائج البحث (اختياري)
+    return { image, title: query };
   } catch (e) {
-    console.error("Search Failed:", e);
+    console.error("Google Fallback Failed:", e);
     return { image: "", title: "" };
   }
 }
 
-// 2. استخراج الكود (SKU) والماركة بذكاء 🧠
-function analyzeUrl(url: string): { brand: string; sku: string; keywords: string } {
+// 2. استخراج الكلمات المهمة من الرابط
+function extractKeywords(url: string): string {
   try {
     const urlObj = new URL(url);
-    const path = urlObj.pathname;
-    const parts = path.split("/").filter((p) => p.length > 1);
-    const lastPart = parts[parts.length - 1];
 
-    // استخراج الماركة
-    let brand = urlObj.hostname.replace("www.", "").split(".")[0];
-    if (brand === "usa" || brand === "shop" || brand === "store") brand = urlObj.hostname.split(".")[1];
+    // أ. إذا كان أمازون، نبحث عن كود ASIN (مثل B08...)
+    if (url.includes("amazon")) {
+      const asinMatch = url.match(/\/(B[0-9A-Z]{9})/);
+      if (asinMatch) return `Amazon product ${asinMatch[1]}`;
 
-    // 🏹 استخراج الـ SKU (كلمة السر)
-    let sku = "";
-
-    // نمط أديداس وتومي (أحرف وأرقام في نهاية الرابط)
-    // مثال: JS0433.html أو XW05867-1A4
-    const skuMatch = lastPart.match(/([A-Z0-9]{5,})/);
-    if (skuMatch) {
-      sku = skuMatch[1];
-    } else {
-      // محاولة إيجاد أي رقم مميز في الرابط
-      const potentialSku = parts.find((p) => p.match(/^[A-Z0-9]+$/) && p.length > 4);
-      if (potentialSku) sku = potentialSku;
+      // محاولة استخراج الاسم من الرابط
+      const pathParts = urlObj.pathname.split("/");
+      const likelyName = pathParts.find((p) => p.length > 10 && !p.startsWith("B0"));
+      if (likelyName) return likelyName.replace(/-/g, " ");
     }
 
-    // استخراج كلمات وصفية (للعنوان)
-    const keywords = parts
-      .filter((p) => !p.match(/html|php|en|us|product|category/i)) // حذف الكلمات العامة
-      .slice(-2) // نأخذ آخر كلمتين
-      .join(" ")
-      .replace(/-/g, " ")
-      .replace(sku, ""); // نحذف الكود من الاسم
-
-    return { brand, sku, keywords };
+    // ب. باقي المواقع
+    const pathSegments = urlObj.pathname.split("/").filter((s) => s.length > 2);
+    return pathSegments[pathSegments.length - 1].replace(/[-_]/g, " ").replace(".html", "");
   } catch (e) {
-    return { brand: "", sku: "", keywords: "" };
+    return "Product";
   }
 }
 
@@ -75,94 +63,80 @@ serve(async (req) => {
 
   try {
     const { url } = await req.json();
-    console.log("🚀 Processing:", url);
-
-    // تحليل الرابط
-    const { brand, sku, keywords } = analyzeUrl(url);
-    console.log(`📊 Analysis -> Brand: ${brand}, SKU: ${sku}`);
+    console.log("🚀 Fetching:", url);
 
     let title = "";
     let image = "";
     let price = "0";
+    let description = "";
 
-    // A. المحاولة الأولى: JSON-LD (البيانات الهيكلية) 🏗️
-    // معظم المواقع الكبيرة تضع بيانات خفية لجوجل، سنحاول قراءتها
-    try {
-      const response = await fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
-        },
-      });
+    // 🛑 التحقق الخاص بأمازون (تخطي الفحص المباشر لأنه سيفشل غالباً)
+    const isAmazon = url.includes("amazon") || url.includes("amzn");
 
-      if (response.ok) {
-        const html = await response.text();
+    if (isAmazon) {
+      console.log("⚠️ Amazon link detected! Switching to Google Fallback immediately.");
+      const keywords = extractKeywords(url);
+      const googleResult = await searchGoogleImages(keywords);
 
-        // البحث عن JSON-LD
-        const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
-        if (jsonLdMatch) {
-          try {
-            const data = JSON.parse(jsonLdMatch[1]);
-            // قد يكون مصفوفة أو كائن
-            const product = Array.isArray(data) ? data.find((i) => i["@type"] === "Product") : data;
+      image = googleResult.image;
+      title = googleResult.title; // سنستخدم الكلمات المستخرجة كعنوان مؤقت
 
-            if (product) {
-              if (product.image) image = Array.isArray(product.image) ? product.image[0] : product.image;
-              if (product.name) title = product.name;
-              if (product.offers && product.offers.price) price = product.offers.price;
-              console.log("✅ Data found via JSON-LD!");
-            }
-          } catch (e) {
-            console.log("JSON-LD parse error");
+      // محاولة البحث عن السعر في جوجل أيضاً (صعبة قليلاً لكن سنحاول)
+      // عادة نتركه 0 ليقوم المستخدم بإدخاله يدوياً في أمازون
+      price = "0";
+    } else {
+      // ✅ المواقع العادية (Jomashop, eBay, etc.)
+      try {
+        const response = await fetch(url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            "Accept-Language": "en-US",
+          },
+        });
+
+        if (response.ok) {
+          const html = await response.text();
+          const doc = new DOMParser().parseFromString(html, "text/html");
+
+          // استخراج البيانات بالطرق القياسية
+          title = doc.querySelector('meta[property="og:title"]')?.getAttribute("content") || doc.title || "";
+          image = doc.querySelector('meta[property="og:image"]')?.getAttribute("content") || "";
+
+          // محاولة صيد السعر
+          const priceMeta =
+            doc.querySelector('meta[property="product:price:amount"]') ||
+            doc.querySelector('meta[property="og:price:amount"]');
+          if (priceMeta) price = priceMeta.getAttribute("content") || "0";
+
+          // Jomashop Fix
+          if (!price || price === "0") {
+            const bodyText = doc.body?.textContent || "";
+            const match = bodyText.match(/\$\s?([0-9,]+(\.[0-9]{2})?)/);
+            if (match) price = match[1];
           }
         }
-
-        // إذا لم نجد في JSON، نبحث في Meta Tags العادية
-        if (!image) {
-          const doc = new DOMParser().parseFromString(html, "text/html");
-          image = doc.querySelector('meta[property="og:image"]')?.getAttribute("content") || "";
-          title = title || doc.querySelector('meta[property="og:title"]')?.getAttribute("content") || "";
-        }
-      }
-    } catch (err) {
-      console.log("❌ Direct fetch failed.");
-    }
-
-    // B. المحاولة الثانية (الأقوى): البحث بالكود (SKU Strategy) 🏹
-    // إذا لم نجد صورة، أو كانت الصورة "وهمية"، نستخدم استراتيجية الكود
-    if (!image || image.length < 10 || image.includes("placeholder")) {
-      let searchQuery = "";
-
-      if (sku && sku.length > 3) {
-        // 🌟 الخلطة السرية: اسم الماركة + الكود
-        searchQuery = `${brand} ${sku}`;
-      } else {
-        // إذا لم نجد كود، نستخدم الاسم المستخرج
-        searchQuery = `${brand} ${keywords}`;
-      }
-
-      const fallbackData = await searchImageBySKU(searchQuery);
-
-      if (fallbackData.image) {
-        image = fallbackData.image;
-        console.log(`✅ Image found via SKU Search: ${searchQuery}`);
-      }
-
-      if (!title || title.trim() === "") {
-        title = keywords ? brand + " " + keywords : brand + " Product " + sku;
+      } catch (err) {
+        console.log("Direct fetch failed, using fallback...");
       }
     }
 
-    // تنظيف العنوان
-    title = title.replace(/\b(usa|en|shop|store)\b/gi, "").trim();
-    // جعل أول حرف كبيراً
-    title = title.charAt(0).toUpperCase() + title.slice(1);
+    // 🔥 خط الدفاع الأخير: إذا فشلنا في جلب الصورة (سواء أمازون أو غيره)
+    if (!image || image.length < 5) {
+      const keywords = extractKeywords(url);
+      const googleData = await searchGoogleImages(keywords);
+      if (googleData.image) image = googleData.image;
+      if (!title || title.trim() === "") title = googleData.title;
+    }
+
+    // تنظيف البيانات
+    const cleanPrice = price ? price.replace(/[^0-9.]/g, "") : "0";
 
     return new Response(
       JSON.stringify({
-        title: title || "New Order",
-        description: `Imported from ${brand}`,
+        title: title || "New Product",
+        description: description || "Product from Amazon/Web",
         image: image,
-        price: price,
+        price: cleanPrice,
         url: url,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
