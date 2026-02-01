@@ -1,88 +1,260 @@
-// 1. تأكد أن هذا السطر موجود في أعلى الملف (هذا ما يُحذف عادة بالخطأ)
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { DOMParser } from "https://deno.land/x/deno_dom/deno-dom-wasm.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
+// ==========================================
+// 1. معالج Adidas (الرابط المباشر) 👟
+// ==========================================
+function handleAdidas(url: string) {
+    console.log("⚡ Strategy: Adidas Direct Link");
+    const skuMatch = url.match(/\/([A-Z0-9]{6})\.html/);
+    const sku = skuMatch ? skuMatch[1] : "";
+    
+    if (sku) {
+        const image = `https://assets.adidas.com/images/w_600,f_auto,q_auto/${sku}_01_standard.jpg`;
+        const urlParts = url.split('/');
+        const nameSlug = urlParts[urlParts.length - 2] || "adidas-product";
+        const title = "Adidas " + nameSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        return { title, description: `Adidas SKU: ${sku}`, image, price: "0", url };
+    }
+    return null;
+}
+
+// ==========================================
+// 2. معالج Tommy Hilfiger (Scene7 Pattern) 🔴
+// ==========================================
+function handleTommy(url: string) {
+    console.log("⚡ Strategy: Tommy Scene7 Link");
+    const match = url.match(/([A-Z0-9]+)-([A-Z0-9]+)\.html/);
+    
+    if (match) {
+        const rawSku = match[1];
+        const scene7Sku = rawSku.replace('-', '_');
+        const image = `https://shoptommy.scene7.com/is/image/ShopTommy/${scene7Sku}_main?wid=800&hei=800&fmt=jpeg`;
+        const title = `Tommy Hilfiger - ${rawSku}`;
+        return { title, description: `Tommy SKU: ${rawSku}`, image, price: "0", url };
+    }
+    return null;
+}
+
+// ==========================================
+// 3. معالج Victoria's Secret (البحث الذكي عن الكود) 👙
+// ==========================================
+async function handleVictoriasSecret(url: string) {
+    console.log("⚡ Strategy: VS Smart Jina Handler");
+    try {
+        const urlObj = new URL(url);
+        const genericId = urlObj.searchParams.get("genericId");
+        const choice = urlObj.searchParams.get("choice");
+        const targetSku = (genericId && choice) ? `${genericId}${choice}` : "";
+
+        const jinaUrl = `https://r.jina.ai/${url}`;
+        const res = await fetch(jinaUrl, { headers: { "X-No-Cache": "true" } });
+        const text = await res.text();
+
+        const titleMatch = text.match(/^Title:\s*(.+)$/m);
+        const title = titleMatch ? titleMatch[1].replace("Victoria's Secret", "").trim() : "VS Product";
+
+        let image = "";
+        if (targetSku) {
+            const exactImgMatch = text.match(new RegExp(`!\\[.*?\\]\\((https?://[^\\)]+${targetSku}[^\\)]+)\\)`));
+            if (exactImgMatch) {
+                image = exactImgMatch[1];
+                console.log("✅ Found exact color match!");
+            }
+        }
+
+        if (!image) {
+            const anyImg = text.match(/!\[.*?\]\((https:\/\/www\.victoriassecret\.com\/p\/[^\)]+)\)/);
+            image = anyImg ? anyImg[1] : "";
+        }
+
+        const priceMatch = text.match(/(\$|USD)\s?([0-9,]+(\.[0-9]{2})?)/i);
+        const price = priceMatch ? priceMatch[2].replace(/,/g, '') : "0";
+
+        return { title, description: "Imported from Victoria's Secret", image, price, url };
+    } catch (e) { return null; }
+}
+
+// ==========================================
+// 4. معالج Jomashop (Fetch الكلاسيكي) ⌚
+// ==========================================
+async function handleJomashop(url: string) {
+    console.log("⚡ Strategy: Jomashop Direct Fetch");
+    try {
+        const response = await fetch(url, {
+            headers: { "User-Agent": "Mozilla/5.0" }
+        });
+        const html = await response.text();
+        
+        const imgMatch = html.match(/meta property="og:image" content="([^"]+)"/);
+        const image = imgMatch ? imgMatch[1] : "";
+        
+        const titleMatch = html.match(/meta property="og:title" content="([^"]+)"/);
+        const title = titleMatch ? titleMatch[1] : "Jomashop Product";
+        
+        let price = "0";
+        const priceMatch = html.match(/"price":\s?"([0-9.]+)"/) || html.match(/itemprop="price" content="([0-9.]+)"/);
+        if (priceMatch) price = priceMatch[1];
+
+        return { title, description: "Imported from Jomashop", image, price, url };
+    } catch (e) { return null; }
+}
+
+// ==========================================
+// 5. معالج Macy's (Jina AI المخصص) 🛍️
+// ==========================================
+async function handleMacys(url: string) {
+    console.log("⚡ Strategy: Macy's Jina Handler");
+    try {
+        const jinaUrl = `https://r.jina.ai/${url}`;
+        const res = await fetch(jinaUrl, { headers: { "X-No-Cache": "true" } });
+        const text = await res.text();
+        
+        const titleMatch = text.match(/^Title:\s*(.+)$/m);
+        const title = titleMatch ? titleMatch[1].replace(" - Macy's", "").replace("Created for Macy's", "").trim() : "Macy's Product";
+
+        const imgMatch = text.match(/!\[.*?\]\((https?:\/\/[^\)]+macysassets[^\)]+)\)/);
+        let image = imgMatch ? imgMatch[1] : "";
+        
+        if (!image) {
+            const anyImg = text.match(/!\[.*?\]\((https?:\/\/[^\)]+)\)/);
+            image = anyImg ? anyImg[1] : "";
+        }
+
+        const priceMatch = text.match(/(\$|USD)\s?([0-9,]+(\.[0-9]{2})?)/i);
+        const price = priceMatch ? priceMatch[2].replace(/,/g, '') : "0";
+
+        return { title, description: "Imported from Macy's", image, price, url };
+    } catch (e) { return null; }
+}
+
+// ==========================================
+// 6. معالج iHerb (Jina AI) 🌿
+// ==========================================
+async function handleIherb(url: string) {
+    console.log("⚡ Strategy: iHerb Jina Handler");
+    try {
+        const jinaUrl = `https://r.jina.ai/${url}`;
+        const res = await fetch(jinaUrl, { headers: { "X-No-Cache": "true" } });
+        const text = await res.text();
+        
+        const titleMatch = text.match(/^Title:\s*(.+)$/m);
+        const title = titleMatch ? titleMatch[1].replace("- iHerb", "").trim() : "iHerb Product";
+        
+        const imgMatch = text.match(/!\[.*?\]\((https?:\/\/[^\)]+(cloudinary|images-iherb)[^\)]+)\)/);
+        const image = imgMatch ? imgMatch[1] : "";
+        
+        const priceMatch = text.match(/(\$|USD)\s?([0-9,]+(\.[0-9]{2})?)/i);
+        const price = priceMatch ? priceMatch[2].replace(/,/g, '') : "0";
+
+        return { title, description: "Imported from iHerb", image, price, url };
+    } catch (e) { return null; }
+}
+
+// ==========================================
+// 7. معالج Nike (البحث بالكود) ✔️
+// ==========================================
+async function handleNike(url: string) {
+    console.log("⚡ Strategy: Nike SKU Search");
+    const match = url.match(/\/([A-Z0-9]{2}\d{4}-\d{3})/);
+    if (match) {
+        const sku = match[1];
+        const searchUrl = `https://duckduckgo.com/i.js?q=Nike+${sku}&o=json`;
+        try {
+            const res = await fetch(searchUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+            const data = await res.json();
+            if (data.results && data.results.length > 0) {
+                return { title: `Nike - ${sku}`, description: "Imported Nike Sneaker", image: data.results[0].image, price: "0", url };
+            }
+        } catch (e) {}
+    }
+    return null;
+}
+
+// ==========================================
+// 8. المعالج العام (لباقي المواقع) 🌐
+// ==========================================
+async function handleGeneric(url: string) {
+    console.log("⚡ Strategy: Generic Jina AI");
+    try {
+        const jinaUrl = `https://r.jina.ai/${url}`;
+        const res = await fetch(jinaUrl, { headers: { "X-No-Cache": "true" } });
+        const text = await res.text();
+        
+        const titleMatch = text.match(/^Title:\s*(.+)$/m);
+        let title = titleMatch ? titleMatch[1].split('|')[0].trim() : "New Product";
+        
+        const imgMatch = text.match(/!\[.*?\]\((https?:\/\/[^\)]+)\)/);
+        let image = imgMatch ? imgMatch[1] : "";
+        
+        if (image.includes('jomashop')) {
+             image = image.replace('width=150', 'width=600').replace('height=150', 'height=600');
+        }
+
+        const priceMatch = text.match(/(\$|USD)\s?([0-9,]+(\.[0-9]{2})?)/i);
+        const price = priceMatch ? priceMatch[2].replace(/,/g, '') : "0";
+
+        return { title, description: "Fetched automatically", image, price, url };
+    } catch (e) { return null; }
+}
+
+// ==========================================
+// الموزع الرئيسي (The Router) 🚦
+// ==========================================
 serve(async (req) => {
-  // التعامل مع طلبات المتصفح (CORS)
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
     const { url } = await req.json();
+    console.log("🚀 Processing URL:", url);
 
-    // 2. التحقق من وجود الرابط
-    if (!url) {
-      throw new Error("URL is required");
+    let result = null;
+
+    if (url.includes("adidas.")) {
+        result = handleAdidas(url);
+    } else if (url.includes("tommy.")) {
+        result = handleTommy(url);
+    } else if (url.includes("victoriassecret.")) {
+        result = await handleVictoriasSecret(url);
+    } else if (url.includes("jomashop.")) {
+        result = await handleJomashop(url);
+    } else if (url.includes("macys.")) {
+        result = await handleMacys(url);
+    } else if (url.includes("iherb.")) {
+        result = await handleIherb(url);
+    } else if (url.includes("nike.")) {
+        result = await handleNike(url);
     }
 
-    console.log(`🔍 Processing URL: ${url}`);
-
-    // 3. الاتصال بالموقع مع "قناع" متصفح (User-Agent) ضروري جداً لـ eBay
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to load page. Status: ${response.status}`);
+    if (!result) {
+        result = await handleGeneric(url);
     }
 
-    const html = await response.text();
-
-    // 4. تحليل الصفحة لاستخراج البيانات (هنا نستخدم المكتبة التي ربما حذفتها)
-    const doc = new DOMParser().parseFromString(html, "text/html");
-
-    if (!doc) {
-      throw new Error("Failed to parse HTML");
+    if (!result || !result.image) {
+        result = {
+            title: "Manual Entry Required",
+            description: "Could not fetch details",
+            image: "https://placehold.co/600x400/e2e8f0/64748b?text=Add+Image",
+            price: "0",
+            url: url
+        };
     }
-
-    // استراتيجية البحث عن الصور (نبدأ بالأقوى لـ eBay)
-    const image =
-      doc.querySelector('meta[property="og:image"]')?.getAttribute("content") ||
-      doc.querySelector('meta[name="twitter:image"]')?.getAttribute("content") ||
-      doc.querySelector("#icImg")?.getAttribute("src") || // خاص بـ eBay
-      doc.querySelector(".image-gallery-image img")?.getAttribute("src") ||
-      null;
-
-    const title =
-      doc.querySelector('meta[property="og:title"]')?.getAttribute("content") ||
-      doc.querySelector("h1")?.textContent ||
-      doc.querySelector("title")?.textContent ||
-      "No Title";
-
-    // إصلاح رابط الصورة إذا كان يبدأ بـ //
-    let finalImage = image;
-    if (finalImage && finalImage.startsWith("//")) {
-      finalImage = "https:" + finalImage;
-    }
-
-    console.log(`✅ Extracted: ${title}`);
 
     return new Response(
-      JSON.stringify({
-        title: title ? title.trim() : "",
-        image: finalImage,
-        price: 0, // السعر صعب الاستخراج بدقة دائماً، نتركه 0
-        url: url,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+      JSON.stringify(result),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("❌ Error:", message);
-    return new Response(JSON.stringify({ error: message }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500,
-    });
+    return new Response(
+      JSON.stringify({ error: message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   }
-});
+})
