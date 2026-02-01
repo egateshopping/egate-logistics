@@ -171,21 +171,111 @@ async function handleEbay(url: string) {
 }
 
 // ==========================================
-// 1. معالج Adidas (الرابط المباشر) 👟
+// 1. معالج Adidas (Direct Fetch with OG tags) 👟
 // ==========================================
-function handleAdidas(url: string) {
-    console.log("⚡ Strategy: Adidas Direct Link");
-    const skuMatch = url.match(/\/([A-Z0-9]{6})\.html/);
-    const sku = skuMatch ? skuMatch[1] : "";
-    
-    if (sku) {
-        const image = `https://assets.adidas.com/images/w_600,f_auto,q_auto/${sku}_01_standard.jpg`;
-        const urlParts = url.split('/');
-        const nameSlug = urlParts[urlParts.length - 2] || "adidas-product";
-        const title = "Adidas " + nameSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-        return { title, description: `Adidas SKU: ${sku}`, image, price: "0", url };
+async function handleAdidas(url: string) {
+    console.log("⚡ Strategy: Adidas Direct Fetch");
+    try {
+        // Extract SKU from URL for image fallback
+        const skuMatch = url.match(/\/([A-Z0-9]{6,7})\.html/);
+        const sku = skuMatch ? skuMatch[1] : "";
+        
+        // Try direct fetch with multiple User-Agents
+        const userAgents = [
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+        ];
+        
+        let html = "";
+        let success = false;
+        
+        for (const userAgent of userAgents) {
+            const response = await fetch(url, {
+                headers: {
+                    "User-Agent": userAgent,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                }
+            });
+            
+            html = await response.text();
+            
+            // Check if we got blocked
+            if (!html.includes("Unable to give you access") && 
+                !html.includes("Access Denied") &&
+                !html.includes("Just a moment")) {
+                success = true;
+                console.log("✅ Adidas: Success with UA:", userAgent.substring(0, 30));
+                break;
+            }
+            console.log("⚠️ Adidas: Blocked with UA:", userAgent.substring(0, 30));
+        }
+        
+        let title = "Adidas Product";
+        let price = "0";
+        let image = "";
+        
+        if (success) {
+            // Extract OG title
+            const ogTitleMatch = html.match(/property="og:title"\s+content="([^"]+)"/i) ||
+                                 html.match(/content="([^"]+)"\s+property="og:title"/i);
+            if (ogTitleMatch) {
+                title = ogTitleMatch[1].split('|')[0].split(' - adidas')[0].trim();
+            }
+            
+            // Extract OG image
+            const ogImageMatch = html.match(/property="og:image"\s+content="([^"]+)"/i) ||
+                                 html.match(/content="([^"]+)"\s+property="og:image"/i);
+            if (ogImageMatch) {
+                image = ogImageMatch[1];
+                // Enhance image quality
+                image = image.replace(/w_\d+/, 'w_800').replace(/h_\d+/, 'h_800');
+            }
+            
+            // Extract price from JSON-LD or page content
+            const jsonLdMatch = html.match(/"price"\s*:\s*"?([0-9.]+)"?/);
+            if (jsonLdMatch) {
+                price = jsonLdMatch[1];
+            } else {
+                const priceMatch = html.match(/\$([0-9,]+(?:\.[0-9]{2})?)/);
+                if (priceMatch) {
+                    price = priceMatch[1].replace(/,/g, '');
+                }
+            }
+        }
+        
+        // Fallback: construct image from SKU if no OG image
+        if (!image && sku) {
+            image = `https://assets.adidas.com/images/w_800,f_auto,q_auto/${sku}_01_standard.jpg`;
+            console.log("✅ Adidas: Built image from SKU:", sku);
+        }
+        
+        // Fallback: extract title from URL
+        if (title === "Adidas Product" && sku) {
+            const urlParts = url.split('/');
+            const nameSlug = urlParts[urlParts.length - 2] || "adidas-product";
+            title = "Adidas " + nameSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        }
+
+        console.log("✅ Adidas extracted:", { title, image: image ? "found" : "not found", price });
+        
+        return { title, description: "Imported from Adidas", image, price, url };
+    } catch (e) { 
+        console.error("❌ Adidas handler error:", e);
+        
+        // Fallback to URL pattern only
+        const skuMatch = url.match(/\/([A-Z0-9]{6,7})\.html/);
+        if (skuMatch) {
+            const sku = skuMatch[1];
+            const urlParts = url.split('/');
+            const nameSlug = urlParts[urlParts.length - 2] || "adidas-product";
+            const title = "Adidas " + nameSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            const image = `https://assets.adidas.com/images/w_800,f_auto,q_auto/${sku}_01_standard.jpg`;
+            return { title, description: `Adidas SKU: ${sku}`, image, price: "0", url };
+        }
+        return null; 
     }
-    return null;
 }
 
 // ==========================================
@@ -372,46 +462,243 @@ async function handleMacys(url: string) {
 }
 
 // ==========================================
-// 6. معالج iHerb (Jina AI) 🌿
+// 6. معالج iHerb (Direct Fetch + Jina Fallback) 🌿
 // ==========================================
 async function handleIherb(url: string) {
-    console.log("⚡ Strategy: iHerb Jina Handler");
+    console.log("⚡ Strategy: iHerb Multi-Strategy Handler");
+    
+    let title = "iHerb Product";
+    let price = "0";
+    let image = "";
+    
     try {
-        const jinaUrl = `https://r.jina.ai/${url}`;
-        const res = await fetch(jinaUrl, { headers: { "X-No-Cache": "true" } });
-        const text = await res.text();
+        // STRATEGY 1: Try direct fetch with multiple User-Agents
+        const userAgents = [
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+        ];
         
-        const titleMatch = text.match(/^Title:\s*(.+)$/m);
-        const title = titleMatch ? titleMatch[1].replace("- iHerb", "").trim() : "iHerb Product";
+        let html = "";
+        let directSuccess = false;
         
-        const imgMatch = text.match(/!\[.*?\]\((https?:\/\/[^\)]+(cloudinary|images-iherb)[^\)]+)\)/);
-        const image = imgMatch ? imgMatch[1] : "";
+        for (const userAgent of userAgents) {
+            const response = await fetch(url, {
+                headers: {
+                    "User-Agent": userAgent,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                }
+            });
+            
+            html = await response.text();
+            
+            // Check if we got blocked by Cloudflare
+            if (!html.includes("Just a moment") && 
+                !html.includes("Checking your browser") &&
+                html.includes("og:title")) {
+                directSuccess = true;
+                console.log("✅ iHerb: Direct fetch success");
+                break;
+            }
+        }
         
-        const priceMatch = text.match(/(\$|USD)\s?([0-9,]+(\.[0-9]{2})?)/i);
-        const price = priceMatch ? priceMatch[2].replace(/,/g, '') : "0";
+        if (directSuccess) {
+            // Extract from HTML
+            const ogTitleMatch = html.match(/property="og:title"\s+content="([^"]+)"/i) ||
+                                 html.match(/content="([^"]+)"\s+property="og:title"/i);
+            if (ogTitleMatch) {
+                title = ogTitleMatch[1].replace(/\s*-\s*iHerb.*/i, '').split('|')[0].trim();
+            }
+            
+            const ogImageMatch = html.match(/property="og:image"\s+content="([^"]+)"/i) ||
+                                 html.match(/content="([^"]+)"\s+property="og:image"/i);
+            if (ogImageMatch) {
+                image = ogImageMatch[1];
+            }
+            
+            const jsonLdMatch = html.match(/"price"\s*:\s*"?([0-9.]+)"?/);
+            if (jsonLdMatch) {
+                price = jsonLdMatch[1];
+            }
+        } else {
+            // STRATEGY 2: Try Jina AI as fallback
+            console.log("⚠️ iHerb: Trying Jina fallback");
+            try {
+                const jinaUrl = `https://r.jina.ai/${url}`;
+                const res = await fetch(jinaUrl, { 
+                    headers: { "X-No-Cache": "true" },
+                    signal: AbortSignal.timeout(10000) // 10 second timeout
+                });
+                const text = await res.text();
+                
+                // Check if Jina was blocked too
+                if (!text.includes("Just a moment") && !text.includes("Checking your browser")) {
+                    const titleMatch = text.match(/^Title:\s*(.+)$/m);
+                    if (titleMatch) {
+                        title = titleMatch[1].replace(/\s*-\s*iHerb.*/i, '').split('|')[0].trim();
+                    }
+                    
+                    // Extract price
+                    const priceMatch = text.match(/\$([0-9,]+(?:\.[0-9]{2})?)/);
+                    if (priceMatch) {
+                        price = priceMatch[1].replace(/,/g, '');
+                        console.log("✅ iHerb: Jina found price:", price);
+                    }
+                    
+                    // Extract image from Jina markdown
+                    const imgMatch = text.match(/!\[.*?\]\((https?:\/\/[^\)]+cloudinary[^\)]+)\)/i) ||
+                                     text.match(/!\[.*?\]\((https?:\/\/[^\)]+images-iherb[^\)]+)\)/i) ||
+                                     text.match(/!\[.*?\]\((https?:\/\/[^\)]+)\)/);
+                    if (imgMatch) {
+                        image = imgMatch[1];
+                        console.log("✅ iHerb: Jina found image");
+                    }
+                }
+            } catch (jinaError) {
+                console.log("⚠️ iHerb: Jina fallback failed");
+            }
+        }
+        
+        // STRATEGY 3: Extract product info from URL as last resort
+        if (title === "iHerb Product" || !image) {
+            const urlMatch = url.match(/\/pr\/([^\/]+)\/(\d+)/);
+            if (urlMatch) {
+                const productSlug = urlMatch[1];
+                const productId = urlMatch[2];
+                
+                if (title === "iHerb Product") {
+                    // Convert slug to title
+                    title = productSlug.split('-').map(word => 
+                        word.charAt(0).toUpperCase() + word.slice(1)
+                    ).join(' ');
+                }
+                
+                // Try to construct image URL from product ID
+                if (!image) {
+                    image = `https://cloudinary.images-iherb.com/image/upload/f_auto,q_auto:eco/images/new/d/${productId}-0.jpg`;
+                    console.log("✅ iHerb: Built image from product ID");
+                }
+            }
+        }
 
+        console.log("✅ iHerb extracted:", { title, image: image ? "found" : "not found", price });
+        
         return { title, description: "Imported from iHerb", image, price, url };
-    } catch (e) { return null; }
+    } catch (e) { 
+        console.error("❌ iHerb handler error:", e);
+        return null; 
+    }
 }
 
 // ==========================================
-// 7. معالج Nike (البحث بالكود) ✔️
+// 7. معالج Nike (Direct Fetch + OG tags) ✔️
 // ==========================================
 async function handleNike(url: string) {
-    console.log("⚡ Strategy: Nike SKU Search");
-    const match = url.match(/\/([A-Z0-9]{2}\d{4}-\d{3})/);
-    if (match) {
-        const sku = match[1];
-        const searchUrl = `https://duckduckgo.com/i.js?q=Nike+${sku}&o=json`;
-        try {
-            const res = await fetch(searchUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
-            const data = await res.json();
-            if (data.results && data.results.length > 0) {
-                return { title: `Nike - ${sku}`, description: "Imported Nike Sneaker", image: data.results[0].image, price: "0", url };
+    console.log("⚡ Strategy: Nike Direct Fetch");
+    try {
+        // Try direct fetch with multiple User-Agents
+        const userAgents = [
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+        ];
+        
+        let html = "";
+        let success = false;
+        
+        for (const userAgent of userAgents) {
+            const response = await fetch(url, {
+                headers: {
+                    "User-Agent": userAgent,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                }
+            });
+            
+            html = await response.text();
+            
+            // Check if we got valid content (not blocked)
+            if (html.includes("og:title") || html.includes("og:image")) {
+                success = true;
+                console.log("✅ Nike: Success with UA:", userAgent.substring(0, 30));
+                break;
             }
-        } catch (e) {}
+            console.log("⚠️ Nike: No OG tags with UA:", userAgent.substring(0, 30));
+        }
+        
+        let title = "Nike Product";
+        let price = "0";
+        let image = "";
+        
+        if (success) {
+            // Extract OG title
+            const ogTitleMatch = html.match(/property="og:title"\s+content="([^"]+)"/i) ||
+                                 html.match(/content="([^"]+)"\s+property="og:title"/i);
+            if (ogTitleMatch) {
+                title = ogTitleMatch[1].split('|')[0].split(' - Nike')[0].trim();
+            } else {
+                // Fallback to <title> tag
+                const titleTagMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+                if (titleTagMatch) {
+                    title = titleTagMatch[1].split('|')[0].split(' - Nike')[0].trim();
+                }
+            }
+            
+            // Extract OG image
+            const ogImageMatch = html.match(/property="og:image"\s+content="([^"]+)"/i) ||
+                                 html.match(/content="([^"]+)"\s+property="og:image"/i);
+            if (ogImageMatch) {
+                image = ogImageMatch[1];
+            }
+            
+            // Fallback: Look for Nike CDN images
+            if (!image) {
+                const nikeImgMatch = html.match(/https:\/\/static\.nike\.com\/[^\s"'<>]+/i);
+                if (nikeImgMatch) {
+                    image = nikeImgMatch[0];
+                }
+            }
+            
+            // Extract price from JSON-LD or page content
+            const jsonLdMatch = html.match(/"price"\s*:\s*"?([0-9.]+)"?/);
+            if (jsonLdMatch) {
+                price = jsonLdMatch[1];
+            } else {
+                const priceMatch = html.match(/\$([0-9,]+(?:\.[0-9]{2})?)/);
+                if (priceMatch) {
+                    price = priceMatch[1].replace(/,/g, '');
+                }
+            }
+        }
+        
+        // Fallback: Extract SKU from URL for title
+        if (title === "Nike Product") {
+            const match = url.match(/\/([A-Z0-9]{2}\d{4}-\d{3})/);
+            if (match) {
+                title = `Nike - ${match[1]}`;
+            } else {
+                // Try to get name from URL path
+                const pathMatch = url.match(/\/t\/([^\/]+)\//);
+                if (pathMatch) {
+                    title = "Nike " + pathMatch[1].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                }
+            }
+        }
+
+        console.log("✅ Nike extracted:", { title, image: image ? "found" : "not found", price });
+        
+        return { title, description: "Imported from Nike", image, price, url };
+    } catch (e) { 
+        console.error("❌ Nike handler error:", e);
+        
+        // Fallback to SKU-based name
+        const match = url.match(/\/([A-Z0-9]{2}\d{4}-\d{3})/);
+        if (match) {
+            const sku = match[1];
+            return { title: `Nike - ${sku}`, description: "Imported Nike Product", image: "", price: "0", url };
+        }
+        return null; 
     }
-    return null;
 }
 
 // ==========================================
@@ -458,7 +745,7 @@ serve(async (req) => {
     } else if (url.includes("ebay.")) {
         result = await handleEbay(url);
     } else if (url.includes("adidas.")) {
-        result = handleAdidas(url);
+        result = await handleAdidas(url);
     } else if (url.includes("tommy.")) {
         result = await handleTommy(url);
     } else if (url.includes("victoriassecret.")) {
