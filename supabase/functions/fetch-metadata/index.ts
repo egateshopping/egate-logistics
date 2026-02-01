@@ -72,6 +72,84 @@ async function handleAmazon(url: string) {
 }
 
 // ==========================================
+// 0.5. معالج eBay (Direct Fetch with OG tags) 🛒
+// ==========================================
+async function handleEbay(url: string) {
+    console.log("⚡ Strategy: eBay Direct Fetch");
+    try {
+        // Direct fetch with browser-like headers
+        const response = await fetch(url, {
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Connection": "keep-alive",
+                "Upgrade-Insecure-Requests": "1",
+            }
+        });
+        
+        const html = await response.text();
+        
+        // Extract OG image (eBay uses og:image reliably)
+        let image = "";
+        const ogImageMatch = html.match(/property="og:image"\s+content="([^"]+)"/i) || 
+                             html.match(/content="([^"]+)"\s+property="og:image"/i);
+        if (ogImageMatch) {
+            image = ogImageMatch[1];
+            // Upgrade to high resolution
+            if (image.includes('/s-l')) {
+                image = image.replace(/s-l\d+\./, 's-l1600.');
+            }
+        }
+        
+        // Fallback: Look for ebayimg URLs in page
+        if (!image) {
+            const ebayImgMatch = html.match(/https:\/\/i\.ebayimg\.com\/images\/g\/[^"'\s]+/i);
+            if (ebayImgMatch) {
+                image = ebayImgMatch[0];
+                if (image.includes('/s-l')) {
+                    image = image.replace(/s-l\d+\./, 's-l1600.');
+                }
+            }
+        }
+        
+        // Extract OG title
+        let title = "eBay Product";
+        const ogTitleMatch = html.match(/property="og:title"\s+content="([^"]+)"/i) ||
+                             html.match(/content="([^"]+)"\s+property="og:title"/i);
+        if (ogTitleMatch) {
+            title = ogTitleMatch[1].split('|')[0].split(' - eBay')[0].trim();
+        } else {
+            // Fallback to <title> tag
+            const titleTagMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+            if (titleTagMatch) {
+                title = titleTagMatch[1].split('|')[0].split(' - eBay')[0].trim();
+            }
+        }
+        
+        // Extract price from JSON-LD or page content
+        let price = "0";
+        const jsonLdMatch = html.match(/"price"\s*:\s*"?([0-9.]+)"?/);
+        if (jsonLdMatch) {
+            price = jsonLdMatch[1];
+        } else {
+            const priceMatch = html.match(/(?:US\s*)?\$([0-9,]+(?:\.[0-9]{2})?)/);
+            if (priceMatch) {
+                price = priceMatch[1].replace(/,/g, '');
+            }
+        }
+
+        console.log("✅ eBay extracted:", { title, image: image ? "found" : "not found", price });
+        
+        return { title, description: "Imported from eBay", image, price, url };
+    } catch (e) { 
+        console.error("❌ eBay handler error:", e);
+        return null; 
+    }
+}
+
+// ==========================================
 // 1. معالج Adidas (الرابط المباشر) 👟
 // ==========================================
 function handleAdidas(url: string) {
@@ -282,6 +360,8 @@ serve(async (req) => {
 
     if (url.includes("amazon.")) {
         result = await handleAmazon(url);
+    } else if (url.includes("ebay.")) {
+        result = await handleEbay(url);
     } else if (url.includes("adidas.")) {
         result = handleAdidas(url);
     } else if (url.includes("tommy.")) {
