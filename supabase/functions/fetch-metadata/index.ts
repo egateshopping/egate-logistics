@@ -77,19 +77,40 @@ async function handleAmazon(url: string) {
 async function handleEbay(url: string) {
     console.log("⚡ Strategy: eBay Direct Fetch");
     try {
-        // Direct fetch with browser-like headers
-        const response = await fetch(url, {
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Connection": "keep-alive",
-                "Upgrade-Insecure-Requests": "1",
-            }
-        });
+        // Try multiple User-Agent strategies
+        const userAgents = [
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        ];
         
-        const html = await response.text();
+        let html = "";
+        let success = false;
+        
+        for (const userAgent of userAgents) {
+            const response = await fetch(url, {
+                headers: {
+                    "User-Agent": userAgent,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                }
+            });
+            
+            html = await response.text();
+            
+            // Check if we got blocked
+            if (!html.includes("Pardon Our Interruption") && !html.includes("Security Measure")) {
+                success = true;
+                console.log("✅ eBay: Success with UA:", userAgent.substring(0, 30));
+                break;
+            }
+            console.log("⚠️ eBay: Blocked with UA:", userAgent.substring(0, 30));
+        }
+        
+        if (!success) {
+            console.log("❌ eBay: All User-Agents blocked");
+            return null;
+        }
         
         // Extract OG image (eBay uses og:image reliably)
         let image = "";
