@@ -6,6 +6,72 @@ const corsHeaders = {
 }
 
 // ==========================================
+// 0. معالج Amazon (الصور المحسّنة) 📦
+// ==========================================
+async function handleAmazon(url: string) {
+    console.log("⚡ Strategy: Amazon Jina Handler");
+    try {
+        const jinaUrl = `https://r.jina.ai/${url}`;
+        const res = await fetch(jinaUrl, { headers: { "X-No-Cache": "true" } });
+        const text = await res.text();
+        
+        // Extract title - clean up Amazon suffix
+        const titleMatch = text.match(/^Title:\s*(.+)$/m);
+        let title = titleMatch ? titleMatch[1].split(' - Amazon')[0].split('|')[0].trim() : "Amazon Product";
+        // Remove "Amazon.com:" prefix if present
+        title = title.replace(/^Amazon\.com:\s*/i, '');
+        
+        // Find Amazon product images (m.media-amazon.com/images/I/)
+        // Look for high-res product images, not tracking pixels
+        let image = "";
+        
+        // Pattern 1: Look for product images in markdown format
+        const amazonImgMatches = text.matchAll(/!\[.*?\]\((https?:\/\/m\.media-amazon\.com\/images\/I\/[^\)]+)\)/g);
+        for (const match of amazonImgMatches) {
+            const imgUrl = match[1];
+            // Skip small thumbnails and tracking images
+            if (!imgUrl.includes('._S') && !imgUrl.includes('._T') && !imgUrl.includes('sprite')) {
+                image = imgUrl;
+                // Enhance image quality if possible
+                image = image.replace(/\._[A-Z]{2}\d+_\./, '._AC_SL1500_.');
+                break;
+            }
+        }
+        
+        // Pattern 2: If no good image found, try direct URL pattern
+        if (!image) {
+            const directImgMatch = text.match(/https:\/\/m\.media-amazon\.com\/images\/I\/[A-Za-z0-9+%-]+\._AC_[^"\s\)]+/);
+            if (directImgMatch) {
+                image = directImgMatch[0];
+            }
+        }
+        
+        // Pattern 3: Look for any media-amazon image as fallback
+        if (!image) {
+            const fallbackMatch = text.match(/https:\/\/m\.media-amazon\.com\/images\/I\/[A-Za-z0-9+%-]+\.[a-z]+/i);
+            if (fallbackMatch) {
+                image = fallbackMatch[0];
+                // Add quality suffix
+                if (!image.includes('._')) {
+                    image = image.replace(/\.([a-z]+)$/i, '._AC_SL1500_.$1');
+                }
+            }
+        }
+
+        // Extract price
+        const priceMatch = text.match(/\$([0-9,]+(?:\.[0-9]{2})?)/);
+        const price = priceMatch ? priceMatch[1].replace(/,/g, '') : "0";
+
+        console.log("✅ Amazon extracted:", { title, image: image ? "found" : "not found", price });
+        
+        return { title, description: "Imported from Amazon", image, price, url };
+    } catch (e) { 
+        console.error("❌ Amazon handler error:", e);
+        return null; 
+    }
+}
+
+// ==========================================
 // 1. معالج Adidas (الرابط المباشر) 👟
 // ==========================================
 function handleAdidas(url: string) {
@@ -214,7 +280,9 @@ serve(async (req) => {
 
     let result = null;
 
-    if (url.includes("adidas.")) {
+    if (url.includes("amazon.")) {
+        result = await handleAmazon(url);
+    } else if (url.includes("adidas.")) {
         result = handleAdidas(url);
     } else if (url.includes("tommy.")) {
         result = handleTommy(url);
