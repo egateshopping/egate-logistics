@@ -189,20 +189,94 @@ function handleAdidas(url: string) {
 }
 
 // ==========================================
-// 2. معالج Tommy Hilfiger (Scene7 Pattern) 🔴
+// 2. معالج Tommy Hilfiger (Jina AI + Fallback) 🔴
 // ==========================================
-function handleTommy(url: string) {
-    console.log("⚡ Strategy: Tommy Scene7 Link");
-    const match = url.match(/([A-Z0-9]+)-([A-Z0-9]+)\.html/);
-    
-    if (match) {
-        const rawSku = match[1];
-        const scene7Sku = rawSku.replace('-', '_');
-        const image = `https://shoptommy.scene7.com/is/image/ShopTommy/${scene7Sku}_main?wid=800&hei=800&fmt=jpeg`;
-        const title = `Tommy Hilfiger - ${rawSku}`;
-        return { title, description: `Tommy SKU: ${rawSku}`, image, price: "0", url };
+async function handleTommy(url: string) {
+    console.log("⚡ Strategy: Tommy Jina AI Handler");
+    try {
+        // Use Jina AI to bypass anti-bot
+        const jinaUrl = `https://r.jina.ai/${url}`;
+        const res = await fetch(jinaUrl, { headers: { "X-No-Cache": "true" } });
+        const text = await res.text();
+        
+        let title = "Tommy Hilfiger Product";
+        let price = "0";
+        let image = "";
+        
+        // Extract title from Jina response
+        const titleMatch = text.match(/^Title:\s*(.+)$/m);
+        if (titleMatch) {
+            title = titleMatch[1]
+                .replace(/\s*\|\s*Tommy Hilfiger.*/i, '')
+                .replace(/\s*-\s*Tommy Hilfiger.*/i, '')
+                .trim();
+        }
+        
+        // Extract price - look for USD patterns
+        const pricePatterns = [
+            /\$([0-9,]+(?:\.[0-9]{2})?)/,
+            /USD\s*([0-9,]+(?:\.[0-9]{2})?)/i,
+            /Price[:\s]*\$?([0-9,]+(?:\.[0-9]{2})?)/i,
+            /Now\s*\$([0-9,]+(?:\.[0-9]{2})?)/i,
+        ];
+        
+        for (const pattern of pricePatterns) {
+            const match = text.match(pattern);
+            if (match) {
+                price = match[1].replace(/,/g, '');
+                console.log("✅ Tommy: Found price:", price);
+                break;
+            }
+        }
+        
+        // Extract image - look for Scene7 or Tommy CDN images
+        const imgPatterns = [
+            /!\[.*?\]\((https?:\/\/shoptommy\.scene7\.com[^\)]+)\)/,
+            /!\[.*?\]\((https?:\/\/[^\)]*tommy[^\)]*\.(jpg|png|webp)[^\)]*)\)/i,
+            /(https?:\/\/shoptommy\.scene7\.com\/is\/image\/ShopTommy\/[^\s"'<>]+)/,
+        ];
+        
+        for (const pattern of imgPatterns) {
+            const match = text.match(pattern);
+            if (match) {
+                image = match[1];
+                console.log("✅ Tommy: Found image from Jina");
+                break;
+            }
+        }
+        
+        // Fallback: construct Scene7 image from SKU in URL
+        if (!image) {
+            const skuMatch = url.match(/\/([A-Z0-9]+-[A-Z0-9]+)\.html/i);
+            if (skuMatch) {
+                const sku = skuMatch[1].replace('-', '_');
+                image = `https://shoptommy.scene7.com/is/image/ShopTommy/${sku}_main`;
+                console.log("✅ Tommy: Built image from SKU:", sku);
+            }
+        }
+        
+        // Enhance Scene7 image quality
+        if (image && image.includes('scene7.com')) {
+            // Remove existing params and add high quality ones
+            const baseUrl = image.split('?')[0];
+            image = `${baseUrl}?wid=1200&hei=1200&fmt=jpeg&qlt=90`;
+        }
+
+        console.log("✅ Tommy extracted:", { title, image: image ? "found" : "not found", price });
+        
+        return { title, description: "Imported from Tommy Hilfiger", image, price, url };
+    } catch (e) { 
+        console.error("❌ Tommy handler error:", e);
+        
+        // Fallback to URL pattern only
+        const match = url.match(/\/([A-Z0-9]+-[A-Z0-9]+)\.html/i);
+        if (match) {
+            const sku = match[1].replace('-', '_');
+            const image = `https://shoptommy.scene7.com/is/image/ShopTommy/${sku}_main?wid=1200&hei=1200&fmt=jpeg&qlt=90`;
+            return { title: `Tommy Hilfiger - ${match[1]}`, description: "Imported from Tommy Hilfiger", image, price: "0", url };
+        }
+        return null; 
     }
-    return null;
 }
 
 // ==========================================
@@ -386,7 +460,7 @@ serve(async (req) => {
     } else if (url.includes("adidas.")) {
         result = handleAdidas(url);
     } else if (url.includes("tommy.")) {
-        result = handleTommy(url);
+        result = await handleTommy(url);
     } else if (url.includes("victoriassecret.")) {
         result = await handleVictoriasSecret(url);
     } else if (url.includes("jomashop.")) {
