@@ -83,6 +83,7 @@ export type Database = {
           product_url: string
           promo_code_id: string | null
           quantity: number
+          shipment_id: string | null
           size: string | null
           special_notes: string | null
           status: Database["public"]["Enums"]["order_status"] | null
@@ -90,6 +91,7 @@ export type Database = {
           total_amount: number | null
           updated_at: string
           user_id: string
+          volumetric_weight: number | null
           warehouse_photos: Json | null
           weight_lbs: number | null
           width_in: number | null
@@ -118,6 +120,7 @@ export type Database = {
           product_url: string
           promo_code_id?: string | null
           quantity?: number
+          shipment_id?: string | null
           size?: string | null
           special_notes?: string | null
           status?: Database["public"]["Enums"]["order_status"] | null
@@ -125,6 +128,7 @@ export type Database = {
           total_amount?: number | null
           updated_at?: string
           user_id: string
+          volumetric_weight?: number | null
           warehouse_photos?: Json | null
           weight_lbs?: number | null
           width_in?: number | null
@@ -153,6 +157,7 @@ export type Database = {
           product_url?: string
           promo_code_id?: string | null
           quantity?: number
+          shipment_id?: string | null
           size?: string | null
           special_notes?: string | null
           status?: Database["public"]["Enums"]["order_status"] | null
@@ -160,6 +165,7 @@ export type Database = {
           total_amount?: number | null
           updated_at?: string
           user_id?: string
+          volumetric_weight?: number | null
           warehouse_photos?: Json | null
           weight_lbs?: number | null
           width_in?: number | null
@@ -170,6 +176,13 @@ export type Database = {
             columns: ["promo_code_id"]
             isOneToOne: false
             referencedRelation: "promo_codes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_shipment_id_fkey"
+            columns: ["shipment_id"]
+            isOneToOne: false
+            referencedRelation: "shipments"
             referencedColumns: ["id"]
           },
         ]
@@ -255,39 +268,51 @@ export type Database = {
       profiles: {
         Row: {
           address: string | null
+          auto_ship_day: string | null
           city: string | null
           country: string | null
           created_at: string
           full_name: string
           id: string
+          is_auto_ship_enabled: boolean | null
           is_verified: boolean | null
           phone: string | null
+          preferred_carrier: string | null
           updated_at: string
           user_id: string
+          wallet_balance: number | null
         }
         Insert: {
           address?: string | null
+          auto_ship_day?: string | null
           city?: string | null
           country?: string | null
           created_at?: string
           full_name?: string
           id?: string
+          is_auto_ship_enabled?: boolean | null
           is_verified?: boolean | null
           phone?: string | null
+          preferred_carrier?: string | null
           updated_at?: string
           user_id: string
+          wallet_balance?: number | null
         }
         Update: {
           address?: string | null
+          auto_ship_day?: string | null
           city?: string | null
           country?: string | null
           created_at?: string
           full_name?: string
           id?: string
+          is_auto_ship_enabled?: boolean | null
           is_verified?: boolean | null
           phone?: string | null
+          preferred_carrier?: string | null
           updated_at?: string
           user_id?: string
+          wallet_balance?: number | null
         }
         Relationships: []
       }
@@ -327,6 +352,60 @@ export type Database = {
           is_active?: boolean | null
           max_uses?: number | null
           min_order_amount?: number | null
+        }
+        Relationships: []
+      }
+      shipments: {
+        Row: {
+          carrier: string
+          chargeable_weight: number | null
+          cod_amount: number | null
+          created_at: string
+          id: string
+          master_tracking_number: string | null
+          notes: string | null
+          paid_from_wallet: number | null
+          payment_status: string | null
+          status: string | null
+          total_cost: number | null
+          total_volumetric_weight: number | null
+          total_weight: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          carrier: string
+          chargeable_weight?: number | null
+          cod_amount?: number | null
+          created_at?: string
+          id?: string
+          master_tracking_number?: string | null
+          notes?: string | null
+          paid_from_wallet?: number | null
+          payment_status?: string | null
+          status?: string | null
+          total_cost?: number | null
+          total_volumetric_weight?: number | null
+          total_weight?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          carrier?: string
+          chargeable_weight?: number | null
+          cod_amount?: number | null
+          created_at?: string
+          id?: string
+          master_tracking_number?: string | null
+          notes?: string | null
+          paid_from_wallet?: number | null
+          payment_status?: string | null
+          status?: string | null
+          total_cost?: number | null
+          total_volumetric_weight?: number | null
+          total_weight?: number | null
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -413,12 +492,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      decrement_wallet: {
+        Args: { p_amount: number; p_user_id: string }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      increment_wallet: {
+        Args: { p_amount: number; p_user_id: string }
+        Returns: undefined
       }
     }
     Enums: {
