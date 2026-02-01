@@ -14,6 +14,7 @@ import NewOrder from "./pages/NewOrder";
 import OrderDetails from "./pages/OrderDetails";
 import Admin from "./pages/Admin";
 import AdminWeightSettings from "./pages/AdminWeightSettings";
+import AdminShipments from "./pages/AdminShipments";
 import CustomerProfile from "./pages/CustomerProfile";
 import NotFound from "./pages/NotFound";
 
@@ -36,6 +37,7 @@ const App = () => (
             <Route path="/order/new" element={<NewOrder />} />
             <Route path="/order/:id" element={<OrderDetails />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/admin/shipments" element={<AdminShipments />} />
             <Route path="/admin/settings/weights" element={<AdminWeightSettings />} />
             <Route path="/admin/customer/:userId" element={<CustomerProfile />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

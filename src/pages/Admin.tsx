@@ -141,12 +141,20 @@ export default function Admin() {
             <h1 className="text-2xl font-extrabold">Egate Control Panel</h1>
             <p className="text-muted-foreground mt-1 font-light">Manage orders, customers, and disputes</p>
           </div>
-          <Link to="/admin/settings/weights">
-            <Button variant="outline" className="gap-2">
-              <Scale className="h-4 w-4" />
-              Shipping Rules ⚖️
-            </Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link to="/admin/shipments">
+              <Button variant="outline" className="gap-2">
+                <Truck className="h-4 w-4" />
+                Shipments 📦
+              </Button>
+            </Link>
+            <Link to="/admin/settings/weights">
+              <Button variant="outline" className="gap-2">
+                <Scale className="h-4 w-4" />
+                Shipping Rules ⚖️
+              </Button>
+            </Link>
+          </div>
         </div>
 
         {/* Stats */}
