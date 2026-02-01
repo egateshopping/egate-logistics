@@ -702,7 +702,574 @@ async function handleNike(url: string) {
 }
 
 // ==========================================
-// 8. المعالج العام (لباقي المواقع) 🌐
+// 8. معالج Walmart 🏪
+// ==========================================
+async function handleWalmart(url: string) {
+    console.log("⚡ Strategy: Walmart Direct Fetch");
+    try {
+        const userAgents = [
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+        ];
+        
+        let html = "";
+        let success = false;
+        
+        for (const userAgent of userAgents) {
+            const response = await fetch(url, {
+                headers: {
+                    "User-Agent": userAgent,
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                }
+            });
+            html = await response.text();
+            if (html.includes("og:title") || html.includes("og:image")) {
+                success = true;
+                console.log("✅ Walmart: Success with UA:", userAgent.substring(0, 30));
+                break;
+            }
+        }
+        
+        let title = "Walmart Product";
+        let price = "0";
+        let image = "";
+        
+        if (success) {
+            const ogTitleMatch = html.match(/property="og:title"\s+content="([^"]+)"/i) ||
+                                 html.match(/content="([^"]+)"\s+property="og:title"/i);
+            if (ogTitleMatch) {
+                title = ogTitleMatch[1].split('|')[0].split(' - Walmart')[0].trim();
+            }
+            
+            const ogImageMatch = html.match(/property="og:image"\s+content="([^"]+)"/i) ||
+                                 html.match(/content="([^"]+)"\s+property="og:image"/i);
+            if (ogImageMatch) {
+                image = ogImageMatch[1];
+                // Enhance Walmart image quality
+                if (image.includes('i5.walmartimages.com')) {
+                    image = image.replace(/odnHeight=\d+/, 'odnHeight=800').replace(/odnWidth=\d+/, 'odnWidth=800');
+                }
+            }
+            
+            const jsonLdMatch = html.match(/"price"\s*:\s*"?([0-9.]+)"?/);
+            if (jsonLdMatch) {
+                price = jsonLdMatch[1];
+            } else {
+                const priceMatch = html.match(/\$([0-9,]+(?:\.[0-9]{2})?)/);
+                if (priceMatch) price = priceMatch[1].replace(/,/g, '');
+            }
+        } else {
+            // Fallback to Jina
+            const jinaUrl = `https://r.jina.ai/${url}`;
+            const res = await fetch(jinaUrl, { headers: { "X-No-Cache": "true" } });
+            const text = await res.text();
+            
+            const titleMatch = text.match(/^Title:\s*(.+)$/m);
+            if (titleMatch) title = titleMatch[1].split('|')[0].split(' - Walmart')[0].trim();
+            
+            const imgMatch = text.match(/!\[.*?\]\((https?:\/\/i5\.walmartimages\.com[^\)]+)\)/);
+            if (imgMatch) image = imgMatch[1];
+            
+            const priceMatch = text.match(/\$([0-9,]+(?:\.[0-9]{2})?)/);
+            if (priceMatch) price = priceMatch[1].replace(/,/g, '');
+        }
+
+        console.log("✅ Walmart extracted:", { title, image: image ? "found" : "not found", price });
+        return { title, description: "Imported from Walmart", image, price, url };
+    } catch (e) { 
+        console.error("❌ Walmart handler error:", e);
+        return null; 
+    }
+}
+
+// ==========================================
+// 9. معالج Puma 🐆
+// ==========================================
+async function handlePuma(url: string) {
+    console.log("⚡ Strategy: Puma Direct Fetch");
+    try {
+        const userAgents = [
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            "facebookexternalhit/1.1",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+        ];
+        
+        let html = "";
+        let success = false;
+        
+        for (const userAgent of userAgents) {
+            const response = await fetch(url, {
+                headers: { "User-Agent": userAgent, "Accept": "text/html", "Accept-Language": "en-US,en;q=0.5" }
+            });
+            html = await response.text();
+            if (html.includes("og:title") && !html.includes("Access Denied")) {
+                success = true;
+                console.log("✅ Puma: Success");
+                break;
+            }
+        }
+        
+        let title = "Puma Product";
+        let price = "0";
+        let image = "";
+        
+        if (success) {
+            const ogTitleMatch = html.match(/property="og:title"\s+content="([^"]+)"/i);
+            if (ogTitleMatch) title = ogTitleMatch[1].split('|')[0].trim();
+            
+            const ogImageMatch = html.match(/property="og:image"\s+content="([^"]+)"/i);
+            if (ogImageMatch) image = ogImageMatch[1];
+            
+            const jsonLdMatch = html.match(/"price"\s*:\s*"?([0-9.]+)"?/);
+            if (jsonLdMatch) price = jsonLdMatch[1];
+            else {
+                const priceMatch = html.match(/\$([0-9,]+(?:\.[0-9]{2})?)/);
+                if (priceMatch) price = priceMatch[1].replace(/,/g, '');
+            }
+        }
+        
+        // SKU fallback from URL
+        if (!image) {
+            const skuMatch = url.match(/(\d{6,})/);
+            if (skuMatch) {
+                image = `https://images.puma.com/image/upload/f_auto,q_auto,w_800/${skuMatch[1]}.png`;
+                console.log("✅ Puma: Built image from SKU");
+            }
+        }
+
+        console.log("✅ Puma extracted:", { title, image: image ? "found" : "not found", price });
+        return { title, description: "Imported from Puma", image, price, url };
+    } catch (e) { 
+        console.error("❌ Puma handler error:", e);
+        return null; 
+    }
+}
+
+// ==========================================
+// 10. معالج Reebok 🏃
+// ==========================================
+async function handleReebok(url: string) {
+    console.log("⚡ Strategy: Reebok Direct Fetch");
+    try {
+        const userAgents = [
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            "facebookexternalhit/1.1",
+        ];
+        
+        let html = "";
+        let success = false;
+        
+        for (const userAgent of userAgents) {
+            const response = await fetch(url, {
+                headers: { "User-Agent": userAgent, "Accept": "text/html", "Accept-Language": "en-US,en;q=0.5" }
+            });
+            html = await response.text();
+            if (html.includes("og:title")) {
+                success = true;
+                break;
+            }
+        }
+        
+        let title = "Reebok Product";
+        let price = "0";
+        let image = "";
+        
+        if (success) {
+            const ogTitleMatch = html.match(/property="og:title"\s+content="([^"]+)"/i);
+            if (ogTitleMatch) title = ogTitleMatch[1].split('|')[0].split(' - Reebok')[0].trim();
+            
+            const ogImageMatch = html.match(/property="og:image"\s+content="([^"]+)"/i);
+            if (ogImageMatch) image = ogImageMatch[1];
+            
+            const jsonLdMatch = html.match(/"price"\s*:\s*"?([0-9.]+)"?/);
+            if (jsonLdMatch) price = jsonLdMatch[1];
+        }
+        
+        // SKU fallback from URL (Reebok uses similar pattern to Adidas)
+        const skuMatch = url.match(/\/([A-Z0-9]{6,7})$/);
+        if (!image && skuMatch) {
+            image = `https://assets.reebok.com/images/w_800,f_auto,q_auto/${skuMatch[1]}_01_standard.jpg`;
+        }
+
+        console.log("✅ Reebok extracted:", { title, image: image ? "found" : "not found", price });
+        return { title, description: "Imported from Reebok", image, price, url };
+    } catch (e) { 
+        console.error("❌ Reebok handler error:", e);
+        return null; 
+    }
+}
+
+// ==========================================
+// 11. معالج Under Armour 💪
+// ==========================================
+async function handleUnderArmour(url: string) {
+    console.log("⚡ Strategy: Under Armour Direct Fetch");
+    try {
+        const userAgents = [
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            "facebookexternalhit/1.1",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+        ];
+        
+        let html = "";
+        let success = false;
+        
+        for (const userAgent of userAgents) {
+            const response = await fetch(url, {
+                headers: { "User-Agent": userAgent, "Accept": "text/html", "Accept-Language": "en-US,en;q=0.5" }
+            });
+            html = await response.text();
+            if (html.includes("og:title") && !html.includes("Access Denied")) {
+                success = true;
+                console.log("✅ Under Armour: Success");
+                break;
+            }
+        }
+        
+        let title = "Under Armour Product";
+        let price = "0";
+        let image = "";
+        
+        if (success) {
+            const ogTitleMatch = html.match(/property="og:title"\s+content="([^"]+)"/i);
+            if (ogTitleMatch) title = ogTitleMatch[1].split('|')[0].trim();
+            
+            const ogImageMatch = html.match(/property="og:image"\s+content="([^"]+)"/i);
+            if (ogImageMatch) image = ogImageMatch[1];
+            
+            const jsonLdMatch = html.match(/"price"\s*:\s*"?([0-9.]+)"?/);
+            if (jsonLdMatch) price = jsonLdMatch[1];
+            else {
+                const priceMatch = html.match(/\$([0-9,]+(?:\.[0-9]{2})?)/);
+                if (priceMatch) price = priceMatch[1].replace(/,/g, '');
+            }
+        }
+
+        console.log("✅ Under Armour extracted:", { title, image: image ? "found" : "not found", price });
+        return { title, description: "Imported from Under Armour", image, price, url };
+    } catch (e) { 
+        console.error("❌ Under Armour handler error:", e);
+        return null; 
+    }
+}
+
+// ==========================================
+// 12. معالج Skechers 👟
+// ==========================================
+async function handleSkechers(url: string) {
+    console.log("⚡ Strategy: Skechers Direct Fetch");
+    try {
+        const userAgents = [
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            "facebookexternalhit/1.1",
+        ];
+        
+        let html = "";
+        let success = false;
+        
+        for (const userAgent of userAgents) {
+            const response = await fetch(url, {
+                headers: { "User-Agent": userAgent, "Accept": "text/html", "Accept-Language": "en-US,en;q=0.5" }
+            });
+            html = await response.text();
+            if (html.includes("og:title") && !html.includes("Just a moment")) {
+                success = true;
+                break;
+            }
+        }
+        
+        let title = "Skechers Product";
+        let price = "0";
+        let image = "";
+        
+        if (success) {
+            const ogTitleMatch = html.match(/property="og:title"\s+content="([^"]+)"/i);
+            if (ogTitleMatch) title = ogTitleMatch[1].split('|')[0].trim();
+            
+            const ogImageMatch = html.match(/property="og:image"\s+content="([^"]+)"/i);
+            if (ogImageMatch) image = ogImageMatch[1];
+            
+            const jsonLdMatch = html.match(/"price"\s*:\s*"?([0-9.]+)"?/);
+            if (jsonLdMatch) price = jsonLdMatch[1];
+        }
+        
+        // Fallback: Extract from URL
+        if (title === "Skechers Product") {
+            const pathMatch = url.match(/\/([^\/]+)$/);
+            if (pathMatch) {
+                title = "Skechers " + pathMatch[1].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            }
+        }
+
+        console.log("✅ Skechers extracted:", { title, image: image ? "found" : "not found", price });
+        return { title, description: "Imported from Skechers", image, price, url };
+    } catch (e) { 
+        console.error("❌ Skechers handler error:", e);
+        return null; 
+    }
+}
+
+// ==========================================
+// 13. معالج B&H Photo Video 📷
+// ==========================================
+async function handleBHPhoto(url: string) {
+    console.log("⚡ Strategy: B&H Photo Direct Fetch");
+    try {
+        const response = await fetch(url, {
+            headers: {
+                "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+                "Accept": "text/html",
+            }
+        });
+        const html = await response.text();
+        
+        let title = "B&H Photo Product";
+        let price = "0";
+        let image = "";
+        
+        const ogTitleMatch = html.match(/property="og:title"\s+content="([^"]+)"/i);
+        if (ogTitleMatch) title = ogTitleMatch[1].split('|')[0].split(' | B&H')[0].trim();
+        
+        const ogImageMatch = html.match(/property="og:image"\s+content="([^"]+)"/i);
+        if (ogImageMatch) image = ogImageMatch[1];
+        
+        // B&H specific image pattern
+        if (!image) {
+            const bhImgMatch = html.match(/https:\/\/static\.bhphoto\.com\/images\/images\d+x\d+\/[^\s"'<>]+/i);
+            if (bhImgMatch) image = bhImgMatch[0];
+        }
+        
+        const jsonLdMatch = html.match(/"price"\s*:\s*"?([0-9.]+)"?/);
+        if (jsonLdMatch) price = jsonLdMatch[1];
+        else {
+            const priceMatch = html.match(/\$([0-9,]+(?:\.[0-9]{2})?)/);
+            if (priceMatch) price = priceMatch[1].replace(/,/g, '');
+        }
+
+        console.log("✅ B&H Photo extracted:", { title, image: image ? "found" : "not found", price });
+        return { title, description: "Imported from B&H Photo", image, price, url };
+    } catch (e) { 
+        console.error("❌ B&H Photo handler error:", e);
+        return null; 
+    }
+}
+
+// ==========================================
+// 14. معالج Newegg 🖥️
+// ==========================================
+async function handleNewegg(url: string) {
+    console.log("⚡ Strategy: Newegg Direct Fetch");
+    try {
+        const response = await fetch(url, {
+            headers: {
+                "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+                "Accept": "text/html",
+            }
+        });
+        const html = await response.text();
+        
+        let title = "Newegg Product";
+        let price = "0";
+        let image = "";
+        
+        const ogTitleMatch = html.match(/property="og:title"\s+content="([^"]+)"/i);
+        if (ogTitleMatch) title = ogTitleMatch[1].split('|')[0].split(' - Newegg')[0].trim();
+        
+        const ogImageMatch = html.match(/property="og:image"\s+content="([^"]+)"/i);
+        if (ogImageMatch) {
+            image = ogImageMatch[1];
+            // Enhance Newegg image
+            if (image.includes('newegg.com')) {
+                image = image.replace(/\/A-(\d+)\//, '/A-$1/').replace('_100', '_800');
+            }
+        }
+        
+        const jsonLdMatch = html.match(/"price"\s*:\s*"?([0-9.]+)"?/);
+        if (jsonLdMatch) price = jsonLdMatch[1];
+        else {
+            const priceMatch = html.match(/\$([0-9,]+(?:\.[0-9]{2})?)/);
+            if (priceMatch) price = priceMatch[1].replace(/,/g, '');
+        }
+
+        console.log("✅ Newegg extracted:", { title, image: image ? "found" : "not found", price });
+        return { title, description: "Imported from Newegg", image, price, url };
+    } catch (e) { 
+        console.error("❌ Newegg handler error:", e);
+        return null; 
+    }
+}
+
+// ==========================================
+// 15. معالج Best Buy 🛒
+// ==========================================
+async function handleBestBuy(url: string) {
+    console.log("⚡ Strategy: Best Buy Direct Fetch");
+    try {
+        const userAgents = [
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            "facebookexternalhit/1.1",
+        ];
+        
+        let html = "";
+        let success = false;
+        
+        for (const userAgent of userAgents) {
+            const response = await fetch(url, {
+                headers: { "User-Agent": userAgent, "Accept": "text/html", "Accept-Language": "en-US,en;q=0.5" }
+            });
+            html = await response.text();
+            if (html.includes("og:title") && !html.includes("Access Denied")) {
+                success = true;
+                break;
+            }
+        }
+        
+        let title = "Best Buy Product";
+        let price = "0";
+        let image = "";
+        
+        if (success) {
+            const ogTitleMatch = html.match(/property="og:title"\s+content="([^"]+)"/i);
+            if (ogTitleMatch) title = ogTitleMatch[1].split('|')[0].split(' - Best Buy')[0].trim();
+            
+            const ogImageMatch = html.match(/property="og:image"\s+content="([^"]+)"/i);
+            if (ogImageMatch) image = ogImageMatch[1];
+            
+            const jsonLdMatch = html.match(/"price"\s*:\s*"?([0-9.]+)"?/);
+            if (jsonLdMatch) price = jsonLdMatch[1];
+            else {
+                const priceMatch = html.match(/\$([0-9,]+(?:\.[0-9]{2})?)/);
+                if (priceMatch) price = priceMatch[1].replace(/,/g, '');
+            }
+        }
+        
+        // Fallback: Extract SKU from URL
+        const skuMatch = url.match(/\/(\d{7})\.p/);
+        if (!image && skuMatch) {
+            image = `https://pisces.bbystatic.com/image2/BestBuy_US/images/products/${skuMatch[1].substring(0,4)}/${skuMatch[1]}_sd.jpg`;
+        }
+
+        console.log("✅ Best Buy extracted:", { title, image: image ? "found" : "not found", price });
+        return { title, description: "Imported from Best Buy", image, price, url };
+    } catch (e) { 
+        console.error("❌ Best Buy handler error:", e);
+        return null; 
+    }
+}
+
+// ==========================================
+// 16. معالج Apple 🍎
+// ==========================================
+async function handleApple(url: string) {
+    console.log("⚡ Strategy: Apple Direct Fetch");
+    try {
+        const response = await fetch(url, {
+            headers: {
+                "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+                "Accept": "text/html",
+            }
+        });
+        const html = await response.text();
+        
+        let title = "Apple Product";
+        let price = "0";
+        let image = "";
+        
+        // Apple uses og:title reliably
+        const ogTitleMatch = html.match(/property="og:title"\s+content="([^"]+)"/i) ||
+                             html.match(/content="([^"]+)"\s+property="og:title"/i);
+        if (ogTitleMatch) title = ogTitleMatch[1].split('|')[0].split(' - Apple')[0].trim();
+        
+        const ogImageMatch = html.match(/property="og:image"\s+content="([^"]+)"/i) ||
+                             html.match(/content="([^"]+)"\s+property="og:image"/i);
+        if (ogImageMatch) image = ogImageMatch[1];
+        
+        // Fallback: Look for Apple Store images
+        if (!image) {
+            const appleImgMatch = html.match(/https:\/\/store\.storeimages\.cdn-apple\.com[^\s"'<>]+/i);
+            if (appleImgMatch) image = appleImgMatch[0];
+        }
+        
+        // Extract price
+        const jsonLdMatch = html.match(/"price"\s*:\s*"?([0-9.]+)"?/);
+        if (jsonLdMatch) price = jsonLdMatch[1];
+        else {
+            const priceMatch = html.match(/\$([0-9,]+(?:\.[0-9]{2})?)/);
+            if (priceMatch) price = priceMatch[1].replace(/,/g, '');
+        }
+
+        console.log("✅ Apple extracted:", { title, image: image ? "found" : "not found", price });
+        return { title, description: "Imported from Apple", image, price, url };
+    } catch (e) { 
+        console.error("❌ Apple handler error:", e);
+        return null; 
+    }
+}
+
+// ==========================================
+// 17. معالج Google Store 🔵
+// ==========================================
+async function handleGoogleStore(url: string) {
+    console.log("⚡ Strategy: Google Store Direct Fetch");
+    try {
+        const userAgents = [
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            "facebookexternalhit/1.1",
+        ];
+        
+        let html = "";
+        let success = false;
+        
+        for (const userAgent of userAgents) {
+            const response = await fetch(url, {
+                headers: { "User-Agent": userAgent, "Accept": "text/html", "Accept-Language": "en-US,en;q=0.5" }
+            });
+            html = await response.text();
+            if (html.includes("og:title")) {
+                success = true;
+                break;
+            }
+        }
+        
+        let title = "Google Store Product";
+        let price = "0";
+        let image = "";
+        
+        if (success) {
+            const ogTitleMatch = html.match(/property="og:title"\s+content="([^"]+)"/i);
+            if (ogTitleMatch) title = ogTitleMatch[1].split('|')[0].split(' - Google')[0].trim();
+            
+            const ogImageMatch = html.match(/property="og:image"\s+content="([^"]+)"/i);
+            if (ogImageMatch) image = ogImageMatch[1];
+            
+            const jsonLdMatch = html.match(/"price"\s*:\s*"?([0-9.]+)"?/);
+            if (jsonLdMatch) price = jsonLdMatch[1];
+            else {
+                const priceMatch = html.match(/\$([0-9,]+(?:\.[0-9]{2})?)/);
+                if (priceMatch) price = priceMatch[1].replace(/,/g, '');
+            }
+        }
+        
+        // Fallback from URL
+        if (title === "Google Store Product") {
+            const pathMatch = url.match(/product\/([^\/\?]+)/);
+            if (pathMatch) {
+                title = "Google " + pathMatch[1].replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            }
+        }
+
+        console.log("✅ Google Store extracted:", { title, image: image ? "found" : "not found", price });
+        return { title, description: "Imported from Google Store", image, price, url };
+    } catch (e) { 
+        console.error("❌ Google Store handler error:", e);
+        return null; 
+    }
+}
+
+// ==========================================
+// 18. المعالج العام (لباقي المواقع) 🌐
 // ==========================================
 async function handleGeneric(url: string) {
     console.log("⚡ Strategy: Generic Jina AI");
@@ -758,6 +1325,26 @@ serve(async (req) => {
         result = await handleIherb(url);
     } else if (url.includes("nike.")) {
         result = await handleNike(url);
+    } else if (url.includes("walmart.")) {
+        result = await handleWalmart(url);
+    } else if (url.includes("puma.")) {
+        result = await handlePuma(url);
+    } else if (url.includes("reebok.")) {
+        result = await handleReebok(url);
+    } else if (url.includes("underarmour.")) {
+        result = await handleUnderArmour(url);
+    } else if (url.includes("skechers.")) {
+        result = await handleSkechers(url);
+    } else if (url.includes("bhphotovideo.")) {
+        result = await handleBHPhoto(url);
+    } else if (url.includes("newegg.")) {
+        result = await handleNewegg(url);
+    } else if (url.includes("bestbuy.")) {
+        result = await handleBestBuy(url);
+    } else if (url.includes("apple.com/shop") || url.includes("apple.com/us/shop")) {
+        result = await handleApple(url);
+    } else if (url.includes("store.google.")) {
+        result = await handleGoogleStore(url);
     }
 
     if (!result) {
