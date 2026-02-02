@@ -1,5 +1,6 @@
 import { Mail, Phone, MapPin, Globe } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { TrackOrderInput } from '@/components/home/TrackOrderInput';
 
 export function Footer() {
   return (
@@ -44,16 +45,6 @@ export function Footer() {
           </div>
 
           <div>
-            <h4 className="font-semibold mb-4">Support</h4>
-            <ul className="space-y-2 text-sm">
-              <li className="text-muted-foreground">FAQ</li>
-              <li className="text-muted-foreground">Shipping Policy</li>
-              <li className="text-muted-foreground">Terms of Service</li>
-              <li className="text-muted-foreground">Privacy Policy</li>
-            </ul>
-          </div>
-
-          <div>
             <h4 className="font-semibold mb-4">Contact</h4>
             <ul className="space-y-3 text-sm">
               <li className="flex items-center gap-2 text-muted-foreground">
@@ -73,6 +64,10 @@ export function Footer() {
                 Delaware, USA
               </li>
             </ul>
+          </div>
+
+          <div>
+            <TrackOrderInput />
           </div>
         </div>
 
