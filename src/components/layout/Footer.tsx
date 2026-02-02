@@ -1,6 +1,7 @@
 import { Mail, Phone, MapPin, Globe } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { TrackOrderInput } from '@/components/home/TrackOrderInput';
+import egateLogo from '@/assets/egate-logo.png';
 
 export function Footer() {
   return (
@@ -8,15 +9,8 @@ export function Footer() {
       <div className="container py-12">
         <div className="grid gap-8 md:grid-cols-4">
           <div className="space-y-4">
-            <Link to="/" className="flex flex-col gap-1">
-              <span className="text-2xl font-extrabold tracking-tight">
-                <span className="text-primary">e</span>
-                <span className="text-primary">g</span>
-                <span className="text-primary">ate</span>
-              </span>
-              <span className="text-xs font-medium text-accent tracking-widest uppercase">
-                Discover, Share & Buy
-              </span>
+            <Link to="/">
+              <img src={egateLogo} alt="Egate Shopping" className="h-12 w-auto" />
             </Link>
             <p className="text-sm text-muted-foreground">
               Your trusted shopping partner connecting US stores to the Middle East.
