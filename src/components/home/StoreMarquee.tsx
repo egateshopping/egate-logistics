@@ -51,7 +51,7 @@ export function StoreMarquee() {
               <img 
                 src={store.logo} 
                 alt={`${store.name} logo`}
-                className="h-8 w-auto max-w-[120px] object-contain grayscale hover:grayscale-0 transition-all"
+                className="h-8 w-auto max-w-[120px] object-contain"
               />
             </div>
           ))}
