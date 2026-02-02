@@ -1,6 +1,5 @@
 import { Package, Truck, ShieldCheck, Globe } from 'lucide-react';
 import { ProductLinkInput } from './ProductLinkInput';
-import egateLogo from '@/assets/egate-logo.png';
 
 export function HeroSection() {
   return (
@@ -9,7 +8,14 @@ export function HeroSection() {
         <div className="text-center max-w-4xl mx-auto space-y-6">
           {/* Brand Logo */}
           <div className="inline-flex flex-col items-center gap-2 animate-fade-in">
-            <img src={egateLogo} alt="Egate Shopping" className="h-24 sm:h-32 w-auto" />
+            <span className="text-5xl sm:text-6xl font-extrabold tracking-tight">
+              <span className="text-primary">e</span>
+              <span className="text-primary">g</span>
+              <span className="text-primary">ate</span>
+            </span>
+            <span className="text-sm font-medium text-accent tracking-widest uppercase">
+              Discover, Share & Buy
+            </span>
           </div>
 
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight animate-fade-in">
