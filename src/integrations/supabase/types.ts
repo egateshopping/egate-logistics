@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      category_defaults: {
+        Row: {
+          category_name: string
+          default_height: number | null
+          default_length: number | null
+          default_weight_lbs: number | null
+          default_width: number | null
+          id: string
+        }
+        Insert: {
+          category_name: string
+          default_height?: number | null
+          default_length?: number | null
+          default_weight_lbs?: number | null
+          default_width?: number | null
+          id?: string
+        }
+        Update: {
+          category_name?: string
+          default_height?: number | null
+          default_length?: number | null
+          default_weight_lbs?: number | null
+          default_width?: number | null
+          id?: string
+        }
+        Relationships: []
+      }
       disputes: {
         Row: {
           admin_notes: string | null
@@ -189,36 +216,57 @@ export type Database = {
       }
       product_cache: {
         Row: {
+          actual_weight_lbs: number | null
+          category: string | null
           created_at: string
+          height: number | null
           height_in: number | null
           id: string
           image_url: string | null
+          length: number | null
           length_in: number | null
+          product_name: string | null
+          source: string | null
           updated_at: string
           url: string
           weight_lbs: number | null
+          width: number | null
           width_in: number | null
         }
         Insert: {
+          actual_weight_lbs?: number | null
+          category?: string | null
           created_at?: string
+          height?: number | null
           height_in?: number | null
           id?: string
           image_url?: string | null
+          length?: number | null
           length_in?: number | null
+          product_name?: string | null
+          source?: string | null
           updated_at?: string
           url: string
           weight_lbs?: number | null
+          width?: number | null
           width_in?: number | null
         }
         Update: {
+          actual_weight_lbs?: number | null
+          category?: string | null
           created_at?: string
+          height?: number | null
           height_in?: number | null
           id?: string
           image_url?: string | null
+          length?: number | null
           length_in?: number | null
+          product_name?: string | null
+          source?: string | null
           updated_at?: string
           url?: string
           weight_lbs?: number | null
+          width?: number | null
           width_in?: number | null
         }
         Relationships: []
