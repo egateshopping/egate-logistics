@@ -145,7 +145,6 @@ serve(async (req) => {
           }
         }
       }
-      }
 
       // Extract dimensions from page
       const dims = extractDimensions(jinaText);
