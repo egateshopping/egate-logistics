@@ -190,7 +190,7 @@ export default function NewOrder() {
           width = 10;
           height = 6;
         }
-        productPrice = aiData?.price || productPrice;
+        productPrice = metaPrice > 0 ? metaPrice : (aiData?.price || productPrice);
         source = "category_default";
         toast.info("📦 تم احتساب السعر حسب الفئة الافتراضية");
       }
