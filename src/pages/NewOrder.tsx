@@ -76,6 +76,7 @@ export default function NewOrder() {
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoDiscount, setPromoDiscount] = useState(0);
   const [pricing, setPricing] = useState<PriceBreakdown | null>(null);
+  const [metaPrice, setMetaPrice] = useState<number>(0);
 
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastFetchedUrl = useRef<string>("");
