@@ -119,9 +119,12 @@ serve(async (req) => {
     // ── Step 4: If no weight from name, try to find it in page text ──
     if (!weightLbs && jinaText) {
       // Look for "Item Weight" or "Shipping Weight" patterns (common on Amazon)
+      // Handle no-space cases like "Item Weight20 Pounds"
       const weightPatterns = [
-        /(?:Item|Product|Shipping|Package)\s*Weight[:\s]*(\d+\.?\d*)\s*(pounds?|lbs?|lb)\b/i,
-        /(?:Weight)[:\s]*(\d+\.?\d*)\s*(pounds?|lbs?|lb)\b/i,
+        /(?:Item|Product|Shipping|Package)\s*Weight[:\s\u200e\u200f]*(\d+\.?\d*)\s*(pounds?|lbs?|lb)\b/i,
+        /(?:Item|Product|Shipping|Package)\s*Weight[:\s\u200e\u200f]*(\d+\.?\d*)\s*(ounces?|oz)\b/i,
+        /(?:Item|Product|Shipping|Package)\s*Weight[:\s\u200e\u200f]*(\d+\.?\d*)\s*(kg|kilograms?)\b/i,
+        /(?:Weight)[:\s\u200e\u200f]*(\d+\.?\d*)\s*(pounds?|lbs?|lb)\b/i,
         /(\d+\.?\d*)\s*(pounds?|lbs?|lb)\b/i,
       ];
       for (const pattern of weightPatterns) {
