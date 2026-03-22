@@ -313,7 +313,7 @@ serve(async (req) => {
       widthInch,
       heightInch,
       category,
-      productName: productName || "",
+      productName: normalizedProductName,
     };
 
     console.log("📦 Final result:", result);
