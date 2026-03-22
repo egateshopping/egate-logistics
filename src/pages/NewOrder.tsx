@@ -1,48 +1,90 @@
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { Package, Loader2, ArrowLeft, Tag, Plus, Minus, ExternalLink, ImageIcon } from 'lucide-react';
-import { Layout } from '@/components/layout/Layout';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
-import { toast } from 'sonner';
+import { useState, useEffect, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import {
+  Package,
+  Loader2,
+  ArrowLeft,
+  Tag,
+  Plus,
+  Minus,
+  ExternalLink,
+  ImageIcon,
+  Scale,
+  Calculator,
+} from "lucide-react";
+import { Layout } from "@/components/layout/Layout";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
+
+// ── أسعار الشحن ──────────────────────────────────────────────
+const SHIPPING_RATE_PER_LB = 6.5;
+const MIN_SHIPPING = 40;
+const CUSTOMS_RATE = 0.05;
+const SERVICE_FEE_RATE = 0.12;
+const UAE_VAT = 0.05;
+const USD_TO_AED = 3.67;
+
+function calcVolumetric(l: number, w: number, h: number) {
+  return parseFloat(((l * w * h) / 139).toFixed(2));
+}
+
+function calcShippingCost(chargeableWeight: number) {
+  return parseFloat(Math.max(chargeableWeight * SHIPPING_RATE_PER_LB, MIN_SHIPPING).toFixed(2));
+}
+
+interface PriceBreakdown {
+  actualWeight: number;
+  volumetricWeight: number;
+  chargeableWeight: number;
+  shippingCost: number;
+  customsDuty: number;
+  vat: number;
+  serviceFee: number;
+  totalUSD: number;
+  totalAED: number;
+  source: "cache" | "scraped" | "category_default";
+  category: string;
+}
 
 export default function NewOrder() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, profile } = useAuth();
-  
-  const initialUrl = (location.state as { productUrl?: string })?.productUrl || '';
-  
+
+  const initialUrl = (location.state as { productUrl?: string })?.productUrl || "";
+
   const [formData, setFormData] = useState({
     product_url: initialUrl,
-    product_title: '',
-    product_image: '',
-    color: '',
-    size: '',
+    product_title: "",
+    product_image: "",
+    color: "",
+    size: "",
     quantity: 1,
-    special_notes: '',
-    promo_code: '',
+    special_notes: "",
+    promo_code: "",
   });
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
+  const [isCalculating, setIsCalculating] = useState(false);
   const [metaFetched, setMetaFetched] = useState(false);
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoDiscount, setPromoDiscount] = useState(0);
-  
-  const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastFetchedUrl = useRef<string>('');
+  const [pricing, setPricing] = useState<PriceBreakdown | null>(null);
 
-  // Auto-fetch metadata when URL changes (with debounce)
+  const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastFetchedUrl = useRef<string>("");
+
+  // ── 1. جلب بيانات المنتج ───────────────────────────────────
   const fetchMetadata = async (url: string) => {
     if (!url || url === lastFetchedUrl.current) return;
-    
-    // Basic URL validation
     try {
-      new URL(url.startsWith('http') ? url : `https://${url}`);
+      new URL(url.startsWith("http") ? url : `https://${url}`);
     } catch {
       return;
     }
@@ -51,18 +93,9 @@ export default function NewOrder() {
     lastFetchedUrl.current = url;
 
     try {
-      const { data, error } = await supabase.functions.invoke('fetch-metadata', {
-        body: { url }
-      });
-
-      if (error) {
-        console.error('Fetch metadata error:', error);
-        setMetaFetched(true);
-        return;
-      }
-
-      if (data?.image || data?.title) {
-        setFormData(prev => ({
+      const { data, error } = await supabase.functions.invoke("fetch-metadata", { body: { url } });
+      if (!error && (data?.image || data?.title)) {
+        setFormData((prev) => ({
           ...prev,
           product_image: data.image || prev.product_image,
           product_title: data.title && !prev.product_title ? data.title : prev.product_title,
@@ -70,114 +103,224 @@ export default function NewOrder() {
         setMetaFetched(true);
       }
     } catch (err) {
-      console.error('Metadata fetch failed:', err);
+      console.error("Metadata fetch failed:", err);
     } finally {
       setIsFetchingMeta(false);
     }
   };
 
-  // Handle URL input change with debounce
+  // ── 2. حساب السعر التلقائي ────────────────────────────────
+  const calculatePricing = async (url: string, productName: string) => {
+    if (!url) return;
+    setIsCalculating(true);
+    setPricing(null);
+
+    try {
+      // أولاً: هل الرابط موجود في الذاكرة؟
+      const { data: cached } = await supabase.from("product_cache").select("*").eq("url", url).single();
+
+      if (cached && cached.actual_weight_lbs) {
+        const vol = calcVolumetric(cached.length || 0, cached.width || 0, cached.height || 0);
+        const chargeable = Math.max(cached.actual_weight_lbs, vol);
+        const shipping = calcShippingCost(chargeable);
+        const cif = shipping;
+        const duty = parseFloat((cif * CUSTOMS_RATE).toFixed(2));
+        const vat = parseFloat(((cif + duty) * UAE_VAT).toFixed(2));
+        const serviceFee = parseFloat((shipping * SERVICE_FEE_RATE).toFixed(2));
+        const totalUSD = parseFloat((shipping + duty + vat + serviceFee).toFixed(2));
+
+        setPricing({
+          actualWeight: cached.actual_weight_lbs,
+          volumetricWeight: vol,
+          chargeableWeight: chargeable,
+          shippingCost: shipping,
+          customsDuty: duty,
+          vat,
+          serviceFee,
+          totalUSD,
+          totalAED: parseFloat((totalUSD * USD_TO_AED).toFixed(2)),
+          source: "cache",
+          category: cached.category || "other",
+        });
+        toast.success("✅ السعر محسوب من ذاكرة المنتجات");
+        return;
+      }
+
+      // ثانياً: استخراج الوزن والأبعاد عبر الذكاء الاصطناعي
+      const { data: aiData } = await supabase.functions.invoke("extract-product-weight", {
+        body: { url, productName },
+      });
+
+      let weight = aiData?.weightLbs;
+      let length = aiData?.lengthInch;
+      let width = aiData?.widthInch;
+      let height = aiData?.heightInch;
+      let category = aiData?.category || "other";
+      let source: "scraped" | "category_default" = "scraped";
+
+      // ثالثاً: إذا لم يجد → استخدم الجدول الافتراضي حسب الفئة
+      if (!weight) {
+        const { data: categoryData } = await supabase
+          .from("category_defaults")
+          .select("*")
+          .eq("category_name", category)
+          .single();
+
+        if (categoryData) {
+          weight = categoryData.default_weight_lbs;
+          length = categoryData.default_length;
+          width = categoryData.default_width;
+          height = categoryData.default_height;
+          source = "category_default";
+        } else {
+          weight = 2.0;
+          length = 12;
+          width = 10;
+          height = 6;
+          source = "category_default";
+        }
+      }
+
+      // حفظ في الذاكرة للمرة القادمة
+      await supabase.from("product_cache").upsert(
+        {
+          url,
+          product_name: productName || aiData?.productName,
+          category,
+          actual_weight_lbs: weight,
+          length: length || null,
+          width: width || null,
+          height: height || null,
+          source,
+        },
+        { onConflict: "url" },
+      );
+
+      const vol = calcVolumetric(length || 0, width || 0, height || 0);
+      const chargeable = Math.max(weight, vol);
+      const shipping = calcShippingCost(chargeable);
+      const cif = shipping;
+      const duty = parseFloat((cif * CUSTOMS_RATE).toFixed(2));
+      const vat = parseFloat(((cif + duty) * UAE_VAT).toFixed(2));
+      const serviceFee = parseFloat((shipping * SERVICE_FEE_RATE).toFixed(2));
+      const totalUSD = parseFloat((shipping + duty + vat + serviceFee).toFixed(2));
+
+      setPricing({
+        actualWeight: weight,
+        volumetricWeight: vol,
+        chargeableWeight: chargeable,
+        shippingCost: shipping,
+        customsDuty: duty,
+        vat,
+        serviceFee,
+        totalUSD,
+        totalAED: parseFloat((totalUSD * USD_TO_AED).toFixed(2)),
+        source,
+        category,
+      });
+
+      toast.success(source === "scraped" ? "✅ تم استخراج الوزن من صفحة المنتج" : "✅ تم احتساب السعر حسب الفئة");
+    } catch (err) {
+      console.error("Pricing calculation failed:", err);
+      toast.error("تعذّر حساب السعر، يرجى المحاولة مرة أخرى");
+    } finally {
+      setIsCalculating(false);
+    }
+  };
+
+  // ── معالجة تغيير الرابط ───────────────────────────────────
   const handleUrlChange = (value: string) => {
     setFormData({ ...formData, product_url: value });
     setMetaFetched(false);
-    
-    // Clear existing timeout
-    if (fetchTimeoutRef.current) {
-      clearTimeout(fetchTimeoutRef.current);
-    }
-    
-    // Set new timeout for auto-fetch (500ms after typing stops)
+    setPricing(null);
+    if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
     if (value.length > 10) {
-      fetchTimeoutRef.current = setTimeout(() => {
-        fetchMetadata(value);
-      }, 800);
+      fetchTimeoutRef.current = setTimeout(() => fetchMetadata(value), 800);
     }
   };
 
-  // Also fetch on blur if not already fetched
   const handleUrlBlur = () => {
-    if (formData.product_url && !metaFetched && formData.product_url !== lastFetchedUrl.current) {
-      fetchMetadata(formData.product_url);
-    }
+    if (formData.product_url && !metaFetched) fetchMetadata(formData.product_url);
   };
 
-  // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
-      if (fetchTimeoutRef.current) {
-        clearTimeout(fetchTimeoutRef.current);
-      }
+      if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
     };
   }, []);
 
-  // Auto-fetch if initial URL is provided
   useEffect(() => {
-    if (initialUrl && !metaFetched) {
-      fetchMetadata(initialUrl);
-    }
+    if (initialUrl && !metaFetched) fetchMetadata(initialUrl);
   }, [initialUrl]);
 
+  // ── تطبيق الكود الترويجي ──────────────────────────────────
   const handleApplyPromo = async () => {
     if (!formData.promo_code.trim()) return;
-
     const { data: promo } = await supabase
-      .from('promo_codes')
-      .select('*')
-      .eq('code', formData.promo_code.toUpperCase())
-      .eq('is_active', true)
+      .from("promo_codes")
+      .select("*")
+      .eq("code", formData.promo_code.toUpperCase())
+      .eq("is_active", true)
       .single();
-
     if (!promo) {
-      toast.error('Invalid promo code');
+      toast.error("Invalid promo code");
       return;
     }
-
     setPromoApplied(true);
-    setPromoDiscount(promo.discount_type === 'percentage' ? promo.discount_value : promo.discount_value);
-    toast.success(`Promo code applied! ${promo.discount_type === 'percentage' ? promo.discount_value + '%' : '$' + promo.discount_value} off`);
+    setPromoDiscount(promo.discount_value);
+    toast.success(
+      `Promo applied! ${promo.discount_type === "percentage" ? promo.discount_value + "%" : "$" + promo.discount_value} off`,
+    );
   };
 
+  // ── إرسال الطلب ───────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!formData.product_url) {
-      toast.error('Please enter a product URL');
+      toast.error("Please enter a product URL");
       return;
     }
-
     setIsSubmitting(true);
 
-    const { error } = await supabase.from('orders').insert({
+    const { error } = await supabase.from("orders").insert({
       user_id: user?.id,
       product_url: formData.product_url,
-      product_title: formData.product_title || 'Product Order',
+      product_name: formData.product_title || "Product Order",
       product_image: formData.product_image || null,
       color: formData.color || null,
       size: formData.size || null,
       quantity: formData.quantity,
       special_notes: formData.special_notes || null,
+      actual_weight: pricing?.actualWeight || null,
+      length: null,
+      width: null,
+      height: null,
+      volumetric_weight: pricing?.volumetricWeight || null,
+      chargeable_weight: pricing?.chargeableWeight || null,
+      shipping_cost: pricing?.shippingCost || null,
       discount: promoDiscount,
+      status: "Pending",
     });
 
     setIsSubmitting(false);
-
     if (error) {
-      toast.error('Failed to create order');
+      toast.error("Failed to create order");
       return;
     }
+    toast.success("Order submitted successfully!");
+    navigate("/dashboard");
+  };
 
-    toast.success('Order submitted! We\'ll contact you with pricing.');
-    navigate('/dashboard');
+  const sourceLabel = {
+    cache: "⚡ من الذاكرة — محسوب فورياً",
+    scraped: "🔍 مستخرج من صفحة المنتج",
+    category_default: "📦 مبني على متوسط الفئة",
   };
 
   return (
     <Layout>
       <div className="container py-8 max-w-2xl">
-        <Button
-          variant="ghost"
-          onClick={() => navigate(-1)}
-          className="mb-6"
-        >
+        <Button variant="ghost" onClick={() => navigate(-1)} className="mb-6">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back
         </Button>
@@ -201,7 +344,7 @@ export default function NewOrder() {
                   onBlur={handleUrlBlur}
                   placeholder="https://amazon.com/product/..."
                   required
-                  className={isFetchingMeta ? 'pr-10' : ''}
+                  className={isFetchingMeta ? "pr-10" : ""}
                 />
                 {isFetchingMeta && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -209,12 +352,9 @@ export default function NewOrder() {
                   </div>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Paste a product link and we'll automatically fetch the preview
-              </p>
             </div>
 
-            {/* Product Preview Card */}
+            {/* Product Preview */}
             {(formData.product_image || formData.product_title || isFetchingMeta) && (
               <div className="rounded-xl border border-border bg-muted/30 overflow-hidden">
                 {isFetchingMeta ? (
@@ -227,7 +367,6 @@ export default function NewOrder() {
                   </div>
                 ) : (
                   <div className="flex gap-4 p-4">
-                    {/* Image */}
                     <div className="h-24 w-24 shrink-0 rounded-xl bg-muted overflow-hidden flex items-center justify-center">
                       {formData.product_image ? (
                         <img
@@ -235,19 +374,15 @@ export default function NewOrder() {
                           alt="Product preview"
                           className="h-full w-full object-cover"
                           onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = 'none';
+                            (e.target as HTMLImageElement).style.display = "none";
                           }}
                         />
                       ) : (
                         <ImageIcon className="h-8 w-8 text-muted-foreground" />
                       )}
                     </div>
-                    
-                    {/* Info */}
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm line-clamp-2">
-                        {formData.product_title || 'Product preview'}
-                      </p>
+                      <p className="font-medium text-sm line-clamp-2">{formData.product_title || "Product preview"}</p>
                       <a
                         href={formData.product_url}
                         target="_blank"
@@ -257,12 +392,83 @@ export default function NewOrder() {
                         <ExternalLink className="h-3 w-3" />
                         View original link
                       </a>
-                      {metaFetched && (
-                        <p className="text-xs text-success mt-1">✓ Preview loaded</p>
-                      )}
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* زر احتساب السعر */}
+            {metaFetched && !pricing && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => calculatePricing(formData.product_url, formData.product_title)}
+                disabled={isCalculating}
+              >
+                {isCalculating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    جاري احتساب سعر الشحن...
+                  </>
+                ) : (
+                  <>
+                    <Calculator className="h-4 w-4 mr-2" />
+                    احتسب سعر الشحن تلقائياً
+                  </>
+                )}
+              </Button>
+            )}
+
+            {/* بطاقة السعر */}
+            {pricing && (
+              <div className="rounded-xl border border-primary/30 bg-primary/5 overflow-hidden">
+                <div className="p-4 border-b border-primary/20">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Scale className="h-4 w-4 text-primary" />
+                      <span className="font-semibold text-sm">تفصيل سعر الشحن</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{sourceLabel[pricing.source]}</span>
+                  </div>
+                </div>
+                <div className="p-4 space-y-2">
+                  {/* الأوزان */}
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    {[
+                      ["الوزن الفعلي", `${pricing.actualWeight} lbs`],
+                      ["الوزن الحجمي", `${pricing.volumetricWeight} lbs`],
+                      ["⚡ الوزن المحاسب", `${pricing.chargeableWeight} lbs`],
+                    ].map(([label, value]) => (
+                      <div key={label} className="bg-background rounded-lg p-2 text-center">
+                        <p className="text-xs text-muted-foreground">{label}</p>
+                        <p className="font-bold text-sm mt-1">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {/* التفاصيل المالية */}
+                  {[
+                    ["✈️ الشحن الدولي", `$${pricing.shippingCost}`],
+                    ["🏛️ الجمارك (5%)", `$${pricing.customsDuty}`],
+                    ["📋 ضريبة القيمة المضافة (5%)", `$${pricing.vat}`],
+                    ["⚙️ رسوم الخدمة (12%)", `$${pricing.serviceFee}`],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex justify-between text-sm py-1">
+                      <span className="text-muted-foreground">{label}</span>
+                      <span className="font-medium">{value}</span>
+                    </div>
+                  ))}
+                  <div className="border-t border-primary/20 pt-3 mt-2">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold">الإجمالي النهائي</span>
+                      <div className="text-right">
+                        <p className="font-bold text-lg text-primary">${pricing.totalUSD}</p>
+                        <p className="text-xs text-muted-foreground">AED {pricing.totalAED}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -355,31 +561,14 @@ export default function NewOrder() {
                   onClick={handleApplyPromo}
                   disabled={promoApplied || !formData.promo_code}
                 >
-                  {promoApplied ? 'Applied' : 'Apply'}
+                  {promoApplied ? "Applied" : "Apply"}
                 </Button>
               </div>
-              {promoApplied && (
-                <p className="text-sm text-success">✓ Discount will be applied to your final invoice</p>
-              )}
+              {promoApplied && <p className="text-sm text-success">✓ Discount will be applied</p>}
             </div>
 
-            {/* Payment Notice */}
-            {!profile?.is_verified && (
-              <div className="p-4 rounded-xl bg-warning/10 border border-warning/30 text-sm">
-                <p className="font-medium text-warning">Down Payment Required</p>
-                <p className="text-muted-foreground mt-1">
-                  As a new customer, a down payment will be required after we calculate the total cost. 
-                  You'll need to upload a payment receipt to proceed.
-                </p>
-              </div>
-            )}
-
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full gradient-hero border-0"
-              size="lg"
-            >
+            {/* Submit */}
+            <Button type="submit" disabled={isSubmitting} className="w-full gradient-hero border-0" size="lg">
               {isSubmitting ? (
                 <>
                   <Loader2 className="h-5 w-5 mr-2 animate-spin" />
@@ -394,7 +583,7 @@ export default function NewOrder() {
             </Button>
 
             <p className="text-center text-xs text-muted-foreground">
-              We'll contact you with the final price breakdown including shipping and customs.
+              Final price includes shipping, customs, and service fees.
             </p>
           </form>
         </div>
