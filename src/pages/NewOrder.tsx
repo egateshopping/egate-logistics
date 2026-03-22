@@ -119,9 +119,9 @@ export default function NewOrder() {
       // أولاً: هل الرابط موجود في الذاكرة؟
       const { data: cached } = await supabase.from("product_cache").select("*").eq("url", url).single();
 
-      if (cached && cached.actual_weight_lbs) {
-        const vol = calcVolumetric(cached.length || 0, cached.width || 0, cached.height || 0);
-        const chargeable = Math.max(cached.actual_weight_lbs, vol);
+      if (cached && cached.weight_lbs) {
+        const vol = calcVolumetric(cached.length_in || 0, cached.width_in || 0, cached.height_in || 0);
+        const chargeable = Math.max(cached.weight_lbs, vol);
         const shipping = calcShippingCost(chargeable);
         const cif = shipping;
         const duty = parseFloat((cif * CUSTOMS_RATE).toFixed(2));
@@ -130,7 +130,7 @@ export default function NewOrder() {
         const totalUSD = parseFloat((shipping + duty + vat + serviceFee).toFixed(2));
 
         setPricing({
-          actualWeight: cached.actual_weight_lbs,
+          actualWeight: cached.weight_lbs,
           volumetricWeight: vol,
           chargeableWeight: chargeable,
           shippingCost: shipping,
@@ -140,7 +140,7 @@ export default function NewOrder() {
           totalUSD,
           totalAED: parseFloat((totalUSD * USD_TO_AED).toFixed(2)),
           source: "cache",
-          category: cached.category || "other",
+          category: "other",
         });
         toast.success("✅ السعر محسوب من ذاكرة المنتجات");
         return;
@@ -161,13 +161,13 @@ export default function NewOrder() {
       // ثالثاً: إذا لم يجد → استخدم الجدول الافتراضي حسب الفئة
       if (!weight) {
         const { data: categoryData } = await supabase
-          .from("category_defaults")
+          .from("shipping_weight_rules")
           .select("*")
-          .eq("category_name", category)
+          .ilike("keyword", `%${category}%`)
           .single();
 
         if (categoryData) {
-          weight = categoryData.default_weight_lbs;
+          weight = categoryData.weight;
           length = categoryData.default_length;
           width = categoryData.default_width;
           height = categoryData.default_height;
@@ -185,13 +185,11 @@ export default function NewOrder() {
       await supabase.from("product_cache").upsert(
         {
           url,
-          product_name: productName || aiData?.productName,
-          category,
-          actual_weight_lbs: weight,
-          length: length || null,
-          width: width || null,
-          height: height || null,
-          source,
+          image_url: null,
+          weight_lbs: weight,
+          length_in: length || null,
+          width_in: width || null,
+          height_in: height || null,
         },
         { onConflict: "url" },
       );
@@ -285,21 +283,18 @@ export default function NewOrder() {
     const { error } = await supabase.from("orders").insert({
       user_id: user?.id,
       product_url: formData.product_url,
-      product_name: formData.product_title || "Product Order",
+      product_title: formData.product_title || "Product Order",
       product_image: formData.product_image || null,
       color: formData.color || null,
       size: formData.size || null,
       quantity: formData.quantity,
       special_notes: formData.special_notes || null,
-      actual_weight: pricing?.actualWeight || null,
-      length: null,
-      width: null,
-      height: null,
+      weight_lbs: pricing?.actualWeight || null,
       volumetric_weight: pricing?.volumetricWeight || null,
       chargeable_weight: pricing?.chargeableWeight || null,
-      shipping_cost: pricing?.shippingCost || null,
+      international_shipping: pricing?.shippingCost || null,
       discount: promoDiscount,
-      status: "Pending",
+      status: "pending_payment",
     });
 
     setIsSubmitting(false);
