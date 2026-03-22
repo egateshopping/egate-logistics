@@ -151,7 +151,12 @@ export default function NewOrder() {
         width = aiData.widthInch || 0;
         height = aiData.heightInch || 0;
         category = aiData.category || "other";
-        if (aiData.price > 0) productPrice = aiData.price;
+        // Prefer metaPrice (from fetch-metadata) if available, otherwise use aiData price
+        if (metaPrice > 0) {
+          productPrice = metaPrice;
+        } else if (aiData.price > 0) {
+          productPrice = aiData.price;
+        }
         source = "scraped";
         toast.success(`✅ تم استخراج الوزن: ${weight} lbs`);
       } else if (cached && (cached as any).actual_weight_lbs) {
