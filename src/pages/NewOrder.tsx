@@ -185,13 +185,11 @@ export default function NewOrder() {
       await supabase.from("product_cache").upsert(
         {
           url,
-          product_name: productName || aiData?.productName,
-          category,
-          actual_weight_lbs: weight,
-          length: length || null,
-          width: width || null,
-          height: height || null,
-          source,
+          image_url: null,
+          weight_lbs: weight,
+          length_in: length || null,
+          width_in: width || null,
+          height_in: height || null,
         },
         { onConflict: "url" },
       );
