@@ -1304,6 +1304,10 @@ async function handleGeneric(url: string) {
         if (image.includes('jomashop')) {
              image = image.replace('width=150', 'width=600').replace('height=150', 'height=600');
         }
+        // Upgrade eBay thumbnails to high-res
+        if (image.includes('ebayimg.com') && image.includes('/s-l')) {
+            image = image.replace(/s-l\d+\./, 's-l1600.');
+        }
 
         // For eBay: look for "US $XX.XX" which is the main listing price pattern
         let price = "0";
