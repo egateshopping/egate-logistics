@@ -1305,8 +1305,19 @@ async function handleGeneric(url: string) {
              image = image.replace('width=150', 'width=600').replace('height=150', 'height=600');
         }
 
-        const priceMatch = text.match(/(\$|USD)\s?([0-9,]+(\.[0-9]{2})?)/i);
-        const price = priceMatch ? priceMatch[2].replace(/,/g, '') : "0";
+        // For eBay: look for "US $XX.XX" which is the main listing price pattern
+        let price = "0";
+        if (url.includes("ebay.")) {
+            // eBay main listing price appears as "US $38.00" in page text
+            const ebayPriceMatch = text.match(/US\s+\$([0-9,]+(?:\.[0-9]{2})?)/);
+            if (ebayPriceMatch) {
+                price = ebayPriceMatch[1].replace(/,/g, '');
+            }
+        }
+        if (price === "0") {
+            const priceMatch = text.match(/(\$|USD)\s?([0-9,]+(\.[0-9]{2})?)/i);
+            price = priceMatch ? priceMatch[2].replace(/,/g, '') : "0";
+        }
 
         return { title, description: "Fetched automatically", image, price, url };
     } catch (e) { return null; }
