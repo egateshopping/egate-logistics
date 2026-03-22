@@ -1,53 +1,70 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  ArrowLeft, Package, ExternalLink, Calendar, MapPin, 
-  Truck, CheckCircle, Clock, CreditCard, AlertTriangle,
-  ShoppingCart, Box, Plane, Home, ImageIcon
-} from 'lucide-react';
-import { Layout } from '@/components/layout/Layout';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
-import { getStatusLabel, getStatusColor } from '@/lib/supabase';
-import type { Order } from '@/lib/supabase';
-import { format } from 'date-fns';
+import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import {
+  ArrowLeft,
+  Package,
+  ExternalLink,
+  Truck,
+  CheckCircle,
+  CreditCard,
+  AlertTriangle,
+  ShoppingCart,
+  Box,
+  Plane,
+  Home,
+  ImageIcon,
+  Clock,
+  Warehouse,
+  MapPin,
+} from "lucide-react";
+import { Layout } from "@/components/layout/Layout";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
+import { getStatusLabel, getStatusColor } from "@/lib/supabase";
+import type { Order } from "@/lib/supabase";
+import { format } from "date-fns";
 
-// Timeline step configuration
+// ── مراحل التتبع الصحيحة ─────────────────────────────────
 const timelineSteps = [
-  { key: 'created', label: 'Order Placed', icon: ShoppingCart },
-  { key: 'paid', label: 'Payment Received', icon: CreditCard },
-  { key: 'purchased', label: 'Item Purchased', icon: Box },
-  { key: 'shipped', label: 'Shipped', icon: Plane },
-  { key: 'delivered', label: 'Delivered', icon: Home },
+  { key: "order_placed", label: "Order Placed", icon: ShoppingCart },
+  { key: "payment_received", label: "Payment Received", icon: CreditCard },
+  { key: "purchased", label: "Item Purchased", icon: Box },
+  { key: "domestic_shipping", label: "Shipping to Oregon", icon: Truck },
+  { key: "at_warehouse", label: "Oregon Warehouse", icon: Warehouse },
+  { key: "international_shipping", label: "Shipped to You", icon: Plane },
+  { key: "delivered", label: "Delivered", icon: Home },
 ];
 
-// Map order status to timeline step
 const getTimelineStep = (status: string): number => {
   switch (status) {
-    case 'pending_payment':
+    case "pending_payment":
       return 0;
-    case 'payment_received':
-    case 'purchasing':
+    case "payment_received":
       return 1;
-    case 'purchased':
-    case 'domestic_shipping':
-    case 'at_warehouse':
+    case "purchasing":
+      return 1;
+    case "purchased":
       return 2;
-    case 'international_shipping':
-    case 'customs':
-    case 'out_for_delivery':
+    case "domestic_shipping":
       return 3;
-    case 'delivered':
+    case "at_warehouse":
       return 4;
-    case 'cancelled':
-    case 'under_investigation':
-      return -1;
+    case "international_shipping":
+      return 5;
+    case "customs":
+      return 5;
+    case "out_for_delivery":
+      return 5;
+    case "delivered":
+      return 6;
     default:
       return 0;
   }
 };
+
+const USD_TO_AED = 3.67;
 
 export default function OrderDetails() {
   const { id } = useParams<{ id: string }>();
@@ -58,33 +75,24 @@ export default function OrderDetails() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      navigate('/login');
+      navigate("/login");
       return;
     }
-    if (user && id) {
-      fetchOrder();
-    }
+    if (user && id) fetchOrder();
   }, [user, authLoading, id]);
 
   const fetchOrder = async () => {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('id', id)
-      .single();
-
+    const { data, error } = await supabase.from("orders").select("*").eq("id", id).single();
     if (error || !data) {
-      console.error('Error fetching order:', error);
-      navigate('/dashboard');
+      navigate("/dashboard");
       return;
     }
-
     setOrder(data as Order);
     setIsLoading(false);
   };
 
-  const formatCurrency = (amount: number | null) => {
-    if (amount === null || amount === undefined) return '—';
+  const fmt = (amount: number | null | undefined) => {
+    if (amount === null || amount === undefined || Number(amount) === 0) return "—";
     return `$${Number(amount).toFixed(2)}`;
   };
 
@@ -108,65 +116,54 @@ export default function OrderDetails() {
         <div className="container py-16 text-center">
           <Package className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
           <h1 className="text-2xl font-display font-bold mb-2">Order Not Found</h1>
-          <p className="text-muted-foreground mb-6">This order doesn't exist or you don't have access to it.</p>
-          <Button onClick={() => navigate('/dashboard')}>Back to Dashboard</Button>
+          <Button onClick={() => navigate("/dashboard")}>Back to Dashboard</Button>
         </div>
       </Layout>
     );
   }
 
   const currentStep = getTimelineStep(order.status);
-  const isCancelled = order.status === 'cancelled';
-  const isUnderInvestigation = order.status === 'under_investigation';
+  const isCancelled = order.status === "cancelled";
+  const o = order as any;
 
   return (
     <Layout>
       <div className="container py-8 max-w-3xl">
-        {/* Header */}
-        <Button
-          variant="ghost"
-          onClick={() => navigate('/dashboard')}
-          className="mb-6"
-        >
+        <Button variant="ghost" onClick={() => navigate("/dashboard")} className="mb-6">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Orders
         </Button>
 
+        {/* العنوان */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-2xl font-display font-bold">
-              Order #{order.id.slice(0, 8).toUpperCase()}
-            </h1>
+            <h1 className="text-2xl font-display font-bold">Order #{order.id.slice(0, 8).toUpperCase()}</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Placed on {format(new Date(order.created_at), 'MMMM d, yyyy')}
+              Placed on {format(new Date(order.created_at), "MMMM d, yyyy")}
             </p>
           </div>
-          <Badge className={`text-sm px-3 py-1 ${getStatusColor(order.status)}`}>
-            {getStatusLabel(order.status)}
-          </Badge>
+          <Badge className={`text-sm px-3 py-1 ${getStatusColor(order.status)}`}>{getStatusLabel(order.status)}</Badge>
         </div>
 
-        {/* Product Card */}
+        {/* بطاقة المنتج */}
         <div className="rounded-2xl bg-card border border-border overflow-hidden mb-6">
           <div className="flex flex-col sm:flex-row gap-6 p-6">
-            {/* Image */}
             <div className="h-40 w-40 shrink-0 rounded-xl bg-muted overflow-hidden flex items-center justify-center mx-auto sm:mx-0">
               {order.product_image ? (
                 <img
                   src={order.product_image}
-                  alt={order.product_title || 'Product'}
+                  alt={order.product_title || "Product"}
                   className="h-full w-full object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                  }}
                 />
               ) : (
                 <ImageIcon className="h-12 w-12 text-muted-foreground" />
               )}
             </div>
-
-            {/* Info */}
             <div className="flex-1 text-center sm:text-left">
-              <h2 className="text-xl font-semibold mb-2">
-                {order.product_title || 'Product Order'}
-              </h2>
+              <h2 className="text-xl font-semibold mb-2">{order.product_title || "Product Order"}</h2>
               <a
                 href={order.product_url}
                 target="_blank"
@@ -176,8 +173,6 @@ export default function OrderDetails() {
                 <ExternalLink className="h-3 w-3" />
                 View Original Product
               </a>
-
-              {/* Specs */}
               <div className="grid grid-cols-2 gap-3 mt-4 p-4 bg-muted/50 rounded-lg">
                 {order.color && (
                   <div>
@@ -197,12 +192,11 @@ export default function OrderDetails() {
                 </div>
                 {order.eta && (
                   <div>
-                    <span className="text-xs text-muted-foreground">ETA</span>
-                    <p className="font-medium">{format(new Date(order.eta), 'MMM d, yyyy')}</p>
+                    <span className="text-xs text-muted-foreground">Expected Delivery</span>
+                    <p className="font-medium">{format(new Date(order.eta), "MMM d, yyyy")}</p>
                   </div>
                 )}
               </div>
-
               {order.special_notes && (
                 <div className="mt-4 p-3 bg-warning/10 border border-warning/30 rounded-lg">
                   <span className="text-xs text-muted-foreground">Special Notes</span>
@@ -213,52 +207,43 @@ export default function OrderDetails() {
           </div>
         </div>
 
-        {/* Timeline */}
+        {/* مراحل التتبع */}
         <div className="rounded-2xl bg-card border border-border p-6 mb-6">
           <h3 className="font-semibold mb-6">Order Progress</h3>
-          
-          {(isCancelled || isUnderInvestigation) ? (
+
+          {isCancelled ? (
             <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/30 rounded-xl">
               <AlertTriangle className="h-6 w-6 text-destructive" />
               <div>
-                <p className="font-medium text-destructive">
-                  {isCancelled ? 'Order Cancelled' : 'Under Investigation'}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {isCancelled 
-                    ? 'This order has been cancelled.' 
-                    : 'We are investigating an issue with this order.'}
-                </p>
+                <p className="font-medium text-destructive">Order Cancelled</p>
+                <p className="text-sm text-muted-foreground">This order has been cancelled.</p>
               </div>
             </div>
           ) : (
             <div className="relative">
-              {/* Progress bar */}
-              <div className="absolute top-5 left-5 right-5 h-1 bg-muted rounded-full">
-                <div 
+              {/* شريط التقدم */}
+              <div className="absolute top-5 left-5 right-5 h-1 bg-muted rounded-full hidden sm:block">
+                <div
                   className="h-full bg-primary rounded-full transition-all duration-500"
                   style={{ width: `${(currentStep / (timelineSteps.length - 1)) * 100}%` }}
                 />
               </div>
 
-              {/* Steps */}
-              <div className="relative flex justify-between">
+              {/* المراحل */}
+              <div className="relative flex flex-col sm:flex-row justify-between gap-4 sm:gap-0">
                 {timelineSteps.map((step, index) => {
                   const Icon = step.icon;
                   const isCompleted = index <= currentStep;
                   const isCurrent = index === currentStep;
 
                   return (
-                    <div key={step.key} className="flex flex-col items-center">
-                      <div 
+                    <div key={step.key} className="flex sm:flex-col items-center sm:items-center gap-3 sm:gap-0">
+                      <div
                         className={`
-                          h-10 w-10 rounded-full flex items-center justify-center z-10 transition-all
-                          ${isCompleted 
-                            ? 'bg-primary text-primary-foreground' 
-                            : 'bg-muted text-muted-foreground'
-                          }
-                          ${isCurrent ? 'ring-4 ring-primary/20' : ''}
-                        `}
+                        h-10 w-10 rounded-full flex items-center justify-center z-10 shrink-0 transition-all
+                        ${isCompleted ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}
+                        ${isCurrent ? "ring-4 ring-primary/20" : ""}
+                      `}
                       >
                         {isCompleted && index < currentStep ? (
                           <CheckCircle className="h-5 w-5" />
@@ -266,7 +251,9 @@ export default function OrderDetails() {
                           <Icon className="h-5 w-5" />
                         )}
                       </div>
-                      <span className={`text-xs mt-2 text-center max-w-[60px] ${isCompleted ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                      <span
+                        className={`text-xs sm:mt-2 sm:text-center sm:max-w-[70px] ${isCompleted ? "text-foreground font-medium" : "text-muted-foreground"}`}
+                      >
                         {step.label}
                       </span>
                     </div>
@@ -277,26 +264,67 @@ export default function OrderDetails() {
           )}
         </div>
 
-        {/* Tracking */}
-        {order.international_tracking && (
+        {/* أرقام التتبع */}
+        {(o.domestic_tracking || o.international_tracking) && (
           <div className="rounded-2xl bg-card border border-border p-6 mb-6">
             <h3 className="font-semibold mb-4 flex items-center gap-2">
               <Truck className="h-5 w-5" />
               Tracking Information
             </h3>
-            <a
-              href={`https://www.17track.net/en/track?nums=${order.international_tracking}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors"
-            >
-              <ExternalLink className="h-4 w-4" />
-              Track Package: {order.international_tracking}
-            </a>
+
+            <div className="space-y-4">
+              {/* التتبع الداخلي */}
+              {o.domestic_tracking && (
+                <div className="p-4 bg-muted/30 rounded-xl border">
+                  <div className="flex items-center gap-2 mb-2">
+                    <MapPin className="h-4 w-4 text-primary" />
+                    <span className="font-medium text-sm">📦 Shipping to Oregon Warehouse</span>
+                    {o.domestic_carrier && (
+                      <Badge variant="outline" className="text-xs">
+                        {o.domestic_carrier}
+                      </Badge>
+                    )}
+                  </div>
+                  <a
+                    href={`https://www.17track.net/en/track?nums=${o.domestic_tracking}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors text-sm"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Track: {o.domestic_tracking}
+                  </a>
+                </div>
+              )}
+
+              {/* التتبع الدولي */}
+              {o.international_tracking && (
+                <div className="p-4 bg-muted/30 rounded-xl border">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Plane className="h-4 w-4 text-primary" />
+                    <span className="font-medium text-sm">✈️ International Shipment to You</span>
+                    {o.international_carrier && (
+                      <Badge variant="outline" className="text-xs">
+                        {o.international_carrier}
+                      </Badge>
+                    )}
+                  </div>
+                  <a
+                    href={`https://www.17track.net/en/track?nums=${o.international_tracking}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors text-sm"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Track: {o.international_tracking}
+                  </a>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Financials */}
+        {/* تفصيل السعر */}
         <div className="rounded-2xl bg-card border border-border p-6">
           <h3 className="font-semibold mb-4 flex items-center gap-2">
             <CreditCard className="h-5 w-5" />
@@ -305,55 +333,42 @@ export default function OrderDetails() {
 
           {order.total_amount && Number(order.total_amount) > 0 ? (
             <div className="space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Item Cost</span>
-                <span>{formatCurrency(order.base_item_cost)}</span>
-              </div>
-              {order.domestic_shipping && Number(order.domestic_shipping) > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Domestic Shipping</span>
-                  <span>{formatCurrency(order.domestic_shipping)}</span>
+              {[
+                ["🛒 Product Price", fmt(order.base_item_cost)],
+                ["✈️ International Shipping", fmt(order.international_shipping)],
+                ["🏛️ Customs (10%)", fmt(order.customs)],
+                ["⚙️ Service Fee", "$2.00"],
+              ].map(([label, value]) => (
+                <div key={label} className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">{label}</span>
+                  <span>{value}</span>
                 </div>
-              )}
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">International Shipping</span>
-                <span>{formatCurrency(order.international_shipping)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Service Fee / Tax</span>
-                <span>{formatCurrency(order.tax)}</span>
-              </div>
-              {order.customs && Number(order.customs) > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Customs</span>
-                  <span>{formatCurrency(order.customs)}</span>
-                </div>
-              )}
-              {(order as any).other_fees && Number((order as any).other_fees) > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">
-                    Other Fees{(order as any).other_fees_note && ` (${(order as any).other_fees_note})`}
-                  </span>
-                  <span>{formatCurrency((order as any).other_fees)}</span>
-                </div>
-              )}
+              ))}
               {order.discount && Number(order.discount) > 0 && (
                 <div className="flex justify-between text-sm text-success">
                   <span>Discount</span>
-                  <span>-{formatCurrency(order.discount)}</span>
+                  <span>-{fmt(order.discount)}</span>
                 </div>
               )}
               <div className="border-t border-border pt-3 mt-3">
-                <div className="flex justify-between text-lg font-bold">
-                  <span>Total</span>
-                  <span className="text-primary">{formatCurrency(order.total_amount)}</span>
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-lg">Total</span>
+                  <div className="text-right">
+                    <p className="font-bold text-xl text-primary">{fmt(order.total_amount)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      AED {(Number(order.total_amount) * USD_TO_AED).toFixed(2)}
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {/* Payment status */}
-              <div className={`mt-4 p-3 rounded-lg ${order.is_paid ? 'bg-success/10 border border-success/30' : 'bg-warning/10 border border-warning/30'}`}>
-                <p className={`text-sm font-medium ${order.is_paid ? 'text-success' : 'text-warning'}`}>
-                  {order.is_paid ? '✓ Payment Confirmed' : '⏳ Awaiting Payment'}
+              <div
+                className={`mt-4 p-3 rounded-lg ${
+                  order.is_paid ? "bg-success/10 border border-success/30" : "bg-warning/10 border border-warning/30"
+                }`}
+              >
+                <p className={`text-sm font-medium ${order.is_paid ? "text-success" : "text-warning"}`}>
+                  {order.is_paid ? "✓ Payment Confirmed" : "⏳ Awaiting Payment"}
                 </p>
               </div>
             </div>
@@ -366,16 +381,16 @@ export default function OrderDetails() {
           )}
         </div>
 
-        {/* Warehouse Photos */}
+        {/* صور المستودع */}
         {order.warehouse_photos && Array.isArray(order.warehouse_photos) && order.warehouse_photos.length > 0 && (
           <div className="rounded-2xl bg-card border border-border p-6 mt-6">
             <h3 className="font-semibold mb-4">Warehouse Photos</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {(order.warehouse_photos as string[]).map((photo, index) => (
-                <a 
-                  key={index} 
-                  href={photo} 
-                  target="_blank" 
+                <a
+                  key={index}
+                  href={photo}
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="aspect-square rounded-lg overflow-hidden bg-muted hover:opacity-80 transition-opacity"
                 >
