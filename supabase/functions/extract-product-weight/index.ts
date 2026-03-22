@@ -131,23 +131,20 @@ serve(async (req) => {
         const match = jinaText.match(pattern);
         if (match) {
           const w = parseFloat(match[1]);
-          if (w > 0 && w < 500) {
-            weightLbs = w;
-            console.log(`✅ Weight from page scrape: ${weightLbs} lbs`);
+          const unit = match[2].toLowerCase();
+          if (w > 0 && w < 5000) {
+            if (unit.startsWith("oz") || unit.startsWith("ounce")) {
+              weightLbs = parseFloat((w / 16).toFixed(2));
+            } else if (unit === "kg" || unit.startsWith("kilogram")) {
+              weightLbs = parseFloat((w * 2.20462).toFixed(2));
+            } else {
+              weightLbs = w;
+            }
+            console.log(`✅ Weight from page scrape: ${weightLbs} lbs (raw: ${w} ${unit})`);
             break;
           }
         }
       }
-
-      // Try kg from page
-      if (!weightLbs) {
-        const kgMatch = jinaText.match(
-          /(?:Item|Product|Shipping)?\s*Weight[:\s]*(\d+\.?\d*)\s*(kg|kilograms?)\b/i
-        );
-        if (kgMatch) {
-          weightLbs = parseFloat((parseFloat(kgMatch[1]) * 2.20462).toFixed(2));
-          console.log(`✅ Weight from page (kg→lbs): ${weightLbs} lbs`);
-        }
       }
 
       // Extract dimensions from page
