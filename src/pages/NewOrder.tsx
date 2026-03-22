@@ -93,12 +93,15 @@ export default function NewOrder() {
     lastFetchedUrl.current = url;
     try {
       const { data, error } = await supabase.functions.invoke("fetch-metadata", { body: { url } });
-      if (!error && (data?.image || data?.title)) {
+      if (!error && (data?.image || data?.title || data?.price)) {
         setFormData((prev) => ({
           ...prev,
           product_image: data.image || prev.product_image,
           product_title: data.title && !prev.product_title ? data.title : prev.product_title,
         }));
+        if (data?.price) {
+          setMetaPrice(parseFloat(data.price) || 0);
+        }
         setMetaFetched(true);
       }
     } catch (err) {
