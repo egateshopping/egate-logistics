@@ -1,238 +1,74 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { Loader2, User, Phone, MapPin, Save, Star, Package, Clock } from "lucide-react";
-import { Layout } from "@/components/layout/Layout";
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { Eye, Clock, CheckCircle, Package, Truck, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
+import type { Order, Profile } from "@/lib/supabase";
 
-export default function Profile() {
-  const { user, profile, isLoading: authLoading, refreshProfile } = useAuth();
-  const navigate = useNavigate();
-  const [isLoading, setIsLoading] = useState(false);
-  const [orderStats, setOrderStats] = useState({ total: 0, active: 0, delivered: 0 });
-  const [formData, setFormData] = useState({
-    full_name: "",
-    phone: "",
-    address: "",
-    city: "",
-    country: "Iraq",
-  });
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
+  pending_payment: { label: "Pending Payment", color: "bg-warning/10 text-warning border-warning/30", icon: DollarSign },
+  payment_received: { label: "Payment Received", color: "bg-success/10 text-success border-success/30", icon: CheckCircle },
+  purchasing: { label: "Purchasing", color: "bg-primary/10 text-primary border-primary/30", icon: Package },
+  purchased: { label: "Purchased", color: "bg-primary/10 text-primary border-primary/30", icon: Package },
+  domestic_shipping: { label: "Domestic Shipping", color: "bg-blue-500/10 text-blue-600 border-blue-500/30", icon: Truck },
+  at_warehouse: { label: "At Warehouse", color: "bg-purple-500/10 text-purple-600 border-purple-500/30", icon: Package },
+  international_shipping: { label: "Int'l Shipping", color: "bg-indigo-500/10 text-indigo-600 border-indigo-500/30", icon: Truck },
+  customs: { label: "Customs", color: "bg-orange-500/10 text-orange-600 border-orange-500/30", icon: Clock },
+  out_for_delivery: { label: "Out for Delivery", color: "bg-teal-500/10 text-teal-600 border-teal-500/30", icon: Truck },
+  delivered: { label: "Delivered", color: "bg-success/10 text-success border-success/30", icon: CheckCircle },
+  under_investigation: { label: "Under Investigation", color: "bg-destructive/10 text-destructive border-destructive/30", icon: Clock },
+  cancelled: { label: "Cancelled", color: "bg-muted text-muted-foreground border-border", icon: Clock },
+};
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/login");
-      return;
-    }
-    if (profile) {
-      setFormData({
-        full_name: profile.full_name || "",
-        phone: profile.phone || "",
-        address: (profile as any).address || "",
-        city: (profile as any).city || "",
-        country: (profile as any).country || "Iraq",
-      });
-    }
-    if (user) fetchOrderStats();
-  }, [user, profile, authLoading]);
+interface AdminOrderCardProps {
+  order: Order & { profiles?: Profile };
+  profile?: Profile;
+  onUpdate: () => void;
+}
 
-  const fetchOrderStats = async () => {
-    const { data } = await supabase.from("orders").select("status").eq("user_id", user?.id);
-    if (data) {
-      setOrderStats({
-        total: data.length,
-        active: data.filter((o) => !["delivered", "cancelled"].includes(o.status)).length,
-        delivered: data.filter((o) => o.status === "delivered").length,
-      });
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    const { error } = await supabase.from("profiles").update(formData).eq("user_id", user?.id);
-    setIsLoading(false);
-    if (error) {
-      toast.error("Failed to update profile");
-      return;
-    }
-    await refreshProfile();
-    toast.success("Profile updated successfully");
-  };
-
-  if (authLoading) {
-    return (
-      <Layout>
-        <div className="container py-12 flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      </Layout>
-    );
-  }
-
-  const isLoyal = (profile as any)?.is_loyal;
+export default function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps) {
+  const statusInfo = STATUS_CONFIG[order.status || "pending_payment"] || STATUS_CONFIG.pending_payment;
+  const StatusIcon = statusInfo.icon;
 
   return (
-    <Layout>
-      <div className="container py-8 max-w-2xl">
-        <div className="mb-8">
-          <h1 className="text-2xl font-display font-bold">Profile Settings</h1>
-          <p className="text-muted-foreground mt-1">Update your account information</p>
-        </div>
-
-        {/* بطاقة الملف الشخصي */}
-        <div className="p-6 rounded-2xl bg-card border border-border mb-6">
-          <div className="flex items-center gap-4 mb-6 pb-6 border-b border-border">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl gradient-hero">
-              <User className="h-8 w-8 text-primary-foreground" />
-            </div>
-            <div className="flex-1">
-              <h2 className="font-display font-semibold text-lg">{formData.full_name || "Your Name"}</h2>
-              <p className="text-sm text-muted-foreground">{user?.email}</p>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {profile?.is_verified && (
-                  <Badge className="bg-success/10 text-success border-success/30">✓ Verified Account</Badge>
-                )}
-                {isLoyal && (
-                  <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-500/30">
-                    <Star className="h-3 w-3 mr-1" />
-                    Loyal Customer
-                  </Badge>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* إحصائيات الطلبات */}
-          <div className="grid grid-cols-3 gap-3 mb-6">
-            <div className="p-3 bg-muted/30 rounded-xl text-center">
-              <Package className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
-              <p className="text-xl font-bold">{orderStats.total}</p>
-              <p className="text-xs text-muted-foreground">Total Orders</p>
-            </div>
-            <div className="p-3 bg-primary/5 rounded-xl text-center">
-              <Clock className="h-5 w-5 mx-auto mb-1 text-primary" />
-              <p className="text-xl font-bold text-primary">{orderStats.active}</p>
-              <p className="text-xs text-muted-foreground">Active</p>
-            </div>
-            <div className="p-3 bg-success/5 rounded-xl text-center">
-              <Package className="h-5 w-5 mx-auto mb-1 text-success" />
-              <p className="text-xl font-bold text-success">{orderStats.delivered}</p>
-              <p className="text-xs text-muted-foreground">Delivered</p>
-            </div>
-          </div>
-
-          {/* نظام الدفع */}
-          <div
-            className={`p-4 rounded-xl border mb-6 ${
-              isLoyal ? "bg-yellow-500/5 border-yellow-500/20" : "bg-muted/30 border-border"
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              {isLoyal ? (
-                <Star className="h-4 w-4 text-yellow-600" />
-              ) : (
-                <Package className="h-4 w-4 text-muted-foreground" />
-              )}
-              <span className="font-medium text-sm">
-                {isLoyal ? "Loyal Customer — Pay on Delivery" : "Standard Customer — Deposit Required"}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {isLoyal
-                ? "You can order without upfront payment. Full payment upon delivery."
-                : "A deposit is required before your order is processed. Remaining balance due upon delivery."}
+    <div className="p-4 rounded-xl bg-card border border-border hover:border-primary/30 transition-colors">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3 flex-1 min-w-0">
+          {order.product_image && (
+            <img
+              src={order.product_image}
+              alt={order.product_title || "Product"}
+              className="w-14 h-14 rounded-lg object-cover border border-border flex-shrink-0"
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-sm truncate">{order.product_title || "Untitled Order"}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {profile?.full_name || "Unknown"} • {profile?.phone || "No phone"}
             </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              ID: {order.id.slice(0, 8)}… • {new Date(order.created_at).toLocaleDateString()}
+            </p>
+            <div className="flex items-center gap-2 mt-2">
+              <Badge variant="outline" className={statusInfo.color}>
+                <StatusIcon className="h-3 w-3 mr-1" />
+                {statusInfo.label}
+              </Badge>
+              {order.total_amount && (
+                <span className="text-xs font-medium">${order.total_amount.toFixed(2)}</span>
+              )}
+            </div>
           </div>
-
-          {/* نموذج التعديل */}
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="full_name">Full Name</Label>
-                <Input
-                  id="full_name"
-                  value={formData.full_name}
-                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                  placeholder="John Doe"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">
-                  <Phone className="h-4 w-4 inline mr-1" />
-                  Phone (WhatsApp)
-                </Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="+964 xxx xxx xxxx"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="address">
-                <MapPin className="h-4 w-4 inline mr-1" />
-                Delivery Address
-              </Label>
-              <Textarea
-                id="address"
-                value={formData.address}
-                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                placeholder="Street address, building, apartment..."
-                rows={3}
-              />
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="city">City</Label>
-                <Input
-                  id="city"
-                  value={formData.city}
-                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                  placeholder="Baghdad"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="country">Country</Label>
-                <Input
-                  id="country"
-                  value={formData.country}
-                  onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                  placeholder="Iraq"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => navigate("/dashboard")}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isLoading} className="gradient-hero border-0">
-                {isLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Changes
-                  </>
-                )}
-              </Button>
-            </div>
-          </form>
         </div>
+        <Link to={`/order/${order.id}`}>
+          <Button variant="outline" size="sm" className="gap-1.5">
+            <Eye className="h-3.5 w-3.5" />
+            View
+          </Button>
+        </Link>
       </div>
-    </Layout>
+    </div>
   );
 }
