@@ -139,16 +139,16 @@ export default function NewOrder() {
         console.warn("extract-product-weight failed, using fallbacks:", err);
       }
 
-      if (aiData?.weightLbs) {
+      if (aiData?.weightLbs > 0) {
         // API returned weight data
         weight = aiData.weightLbs;
         length = aiData.lengthInch || 0;
         width = aiData.widthInch || 0;
         height = aiData.heightInch || 0;
         category = aiData.category || "other";
-        productPrice = aiData.price || productPrice;
+        if (aiData.price > 0) productPrice = aiData.price;
         source = "scraped";
-        toast.success("✅ تم استخراج البيانات من المتجر");
+        toast.success(`✅ تم استخراج الوزن: ${weight} lbs`);
       } else if (cached && (cached as any).actual_weight_lbs) {
         // Use cached weight
         const c = cached as any;
