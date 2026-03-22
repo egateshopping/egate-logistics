@@ -1,27 +1,25 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { 
-  Package, MessageCircle, User, Phone, Calendar, 
-  ChevronDown, ChevronUp, Truck, Image, DollarSign,
-  ExternalLink, Wand2, Loader2, Zap
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  Package,
+  MessageCircle,
+  User,
+  ChevronDown,
+  ChevronUp,
+  DollarSign,
+  ExternalLink,
+  Wand2,
+  Loader2,
+  Zap,
+  Truck,
+  MapPin,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -30,21 +28,11 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog';
-import { supabase } from '@/lib/supabase';
-import { toast } from 'sonner';
-import { format } from 'date-fns';
-import type { Order, OrderStatus, Profile } from '@/lib/supabase';
-import { getStatusLabel, getStatusColor } from '@/lib/supabase';
-
-interface WeightRule {
-  id: string;
-  keyword: string;
-  weight: number;
-  default_length?: number | null;
-  default_width?: number | null;
-  default_height?: number | null;
-}
+} from "@/components/ui/dialog";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
+import type { Order, OrderStatus, Profile } from "@/lib/supabase";
+import { getStatusLabel } from "@/lib/supabase";
 
 interface AdminOrderCardProps {
   order: Order;
@@ -53,502 +41,195 @@ interface AdminOrderCardProps {
 }
 
 const orderStatuses: OrderStatus[] = [
-  'pending_payment',
-  'payment_received',
-  'purchasing',
-  'purchased',
-  'domestic_shipping',
-  'at_warehouse',
-  'international_shipping',
-  'customs',
-  'out_for_delivery',
-  'delivered',
-  'cancelled',
+  "pending_payment",
+  "payment_received",
+  "purchasing",
+  "purchased",
+  "domestic_shipping",
+  "at_warehouse",
+  "international_shipping",
+  "customs",
+  "out_for_delivery",
+  "delivered",
+  "cancelled",
 ];
+
+// شركات الشحن الداخلية في أمريكا
+const DOMESTIC_CARRIERS = ["UPS", "FedEx", "USPS", "DHL", "OnTrac", "Royal Mail", "Aramex", "Other"];
+
+// شركات الشحن الدولي
+const INTERNATIONAL_CARRIERS = ["DHL", "FedEx", "Aramex", "UPS", "Other"];
+
+const SHIPPING_RATE = 10; // $10 per lb
+const MIN_SHIPPING = 8; // $8 minimum
+const CUSTOMS_RATE = 0.1; // 10% of product price
+const SERVICE_FEE = 2; // $2 fixed
+const USD_TO_AED = 3.67;
 
 export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPricingDialogOpen, setIsPricingDialogOpen] = useState(false);
+  const [isTrackingDialogOpen, setIsTrackingDialogOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isFetchingImage, setIsFetchingImage] = useState(false);
+
+  // Pricing state
   const [pricing, setPricing] = useState({
     base_item_cost: Number(order.base_item_cost) || 0,
-    domestic_shipping: Number(order.domestic_shipping) || 0,
-    tax: Number(order.tax) || 0,
     international_shipping: Number(order.international_shipping) || 0,
     customs: Number(order.customs) || 0,
-    other_fees: Number((order as any).other_fees) || 0,
     weight_lbs: Number(order.weight_lbs) || 0,
     length_in: Number(order.length_in) || 0,
     width_in: Number(order.width_in) || 0,
     height_in: Number(order.height_in) || 0,
   });
-  const [otherFeesNote, setOtherFeesNote] = useState((order as any).other_fees_note || '');
-  const [productImageUrl, setProductImageUrl] = useState(order.product_image || '');
-  const [eta, setEta] = useState(order.eta || '');
-  const [domesticTracking, setDomesticTracking] = useState(order.domestic_tracking || '');
-  const [internationalTracking, setInternationalTracking] = useState(order.international_tracking || '');
-  const [isSaving, setIsSaving] = useState(false);
-  const [isSavingPricing, setIsSavingPricing] = useState(false);
-  const [isFetchingImage, setIsFetchingImage] = useState(false);
-  const [isAutoFilled, setIsAutoFilled] = useState(false);
-  const [isPriceFetched, setIsPriceFetched] = useState(false);
-  const [shippingRate, setShippingRate] = useState(8.00);
+  const [productImageUrl, setProductImageUrl] = useState(order.product_image || "");
 
-  // Fetch weight rules from database (client-side)
-  const { data: weightRules = [] } = useQuery<WeightRule[]>({
-    queryKey: ['shipping-weight-rules'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('shipping_weight_rules')
-        .select('id, keyword, weight');
-      if (error) {
-        console.error('Failed to fetch weight rules:', error);
-        return [];
-      }
-      // Sort by keyword length (longest first) for priority matching
-      return (data || []).sort((a, b) => b.keyword.length - a.keyword.length);
-    },
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-  });
+  // Tracking state
+  const [domesticTracking, setDomesticTracking] = useState((order as any).domestic_tracking || "");
+  const [domesticCarrier, setDomesticCarrier] = useState((order as any).domestic_carrier || "");
+  const [internationalTracking, setInternationalTracking] = useState((order as any).international_tracking || "");
+  const [internationalCarrier, setInternationalCarrier] = useState((order as any).international_carrier || "");
+  const [eta, setEta] = useState(order.eta || "");
 
-  // Helper: Normalize URL by removing query parameters for consistent matching
-  const cleanUrl = (url: string): string => {
-    try {
-      const urlObj = new URL(url);
-      return `${urlObj.origin}${urlObj.pathname}`;
-    } catch {
-      // Fallback: just split on ? if URL parsing fails
-      return url.split('?')[0];
-    }
-  };
-
-  // Product Memory - Load saved product details when dialog opens
-  const loadProductMemory = async () => {
-    if (!order.product_url) return;
-    
-    const normalizedUrl = cleanUrl(order.product_url);
-    
-    const { data, error } = await supabase
-      .from('product_memory')
-      .select('*')
-      .eq('url', normalizedUrl)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Failed to load product memory:', error);
-      return;
-    }
-
-    if (data) {
-      let fieldsUpdated = false;
-      
-      // Only auto-fill if fields are currently empty (don't overwrite user input)
-      setPricing(prev => {
-        const updates: any = { ...prev };
-        
-        if (data.weight && !prev.weight_lbs) {
-          updates.weight_lbs = data.weight;
-          fieldsUpdated = true;
-        }
-        if (data.price && !prev.base_item_cost) {
-          updates.base_item_cost = data.price;
-          updates.tax = Math.round(data.price * 0.1 * 100) / 100; // 10% tax
-          fieldsUpdated = true;
-        }
-        // Load dimensions from memory
-        if (data.length_in && !prev.length_in) {
-          updates.length_in = data.length_in;
-          fieldsUpdated = true;
-        }
-        if (data.width_in && !prev.width_in) {
-          updates.width_in = data.width_in;
-          fieldsUpdated = true;
-        }
-        if (data.height_in && !prev.height_in) {
-          updates.height_in = data.height_in;
-          fieldsUpdated = true;
-        }
-        // Load misc fee from memory
-        if (data.misc_fee && !prev.other_fees) {
-          updates.other_fees = data.misc_fee;
-          fieldsUpdated = true;
-        }
-        
-        // Recalculate shipping with loaded data
-        const weight = updates.weight_lbs || 0;
-        const volumetricWeight = ((updates.length_in || 0) * (updates.width_in || 0) * (updates.height_in || 0)) / 139;
-        const chargeableWeight = Math.max(weight, volumetricWeight);
-        if (chargeableWeight > 0) {
-          updates.international_shipping = Math.round(chargeableWeight * shippingRate * 100) / 100;
-        }
-        
-        return updates;
-      });
-      
-      if (data.image_url && !productImageUrl) {
-        setProductImageUrl(data.image_url);
-        fieldsUpdated = true;
-      }
-      
-      // Load misc note from memory
-      if (data.misc_note && !otherFeesNote) {
-        setOtherFeesNote(data.misc_note);
-        fieldsUpdated = true;
-      }
-      
-      if (fieldsUpdated) {
-        setIsAutoFilled(true);
-        toast.success(`🧠 Memory Hit! Loaded details for: ${data.product_title || 'this product'}`);
-      }
-    } else {
-      console.log('No memory for this URL:', normalizedUrl);
-    }
-  };
-
-  // Product Memory - Save to memory on save (includes dimensions, fees)
-  const saveToProductMemory = async () => {
-    if (!order.product_url) return;
-    
-    const normalizedUrl = cleanUrl(order.product_url);
-    
-    const memoryData = {
-      url: normalizedUrl,
-      product_title: order.product_title || null,
-      image_url: productImageUrl || null,
-      weight: pricing.weight_lbs || null,
-      price: pricing.base_item_cost || null,
-      length_in: pricing.length_in || null,
-      width_in: pricing.width_in || null,
-      height_in: pricing.height_in || null,
-      misc_fee: pricing.other_fees || null,
-      misc_note: otherFeesNote || null,
+  // حساب المعادلة الصحيحة
+  const calcPricing = () => {
+    const vol = (pricing.length_in * pricing.width_in * pricing.height_in) / 139;
+    const chargeable = Math.max(pricing.weight_lbs, vol);
+    const shipping = chargeable < 0.5 ? MIN_SHIPPING : parseFloat((chargeable * SHIPPING_RATE).toFixed(2));
+    const customs = parseFloat((pricing.base_item_cost * CUSTOMS_RATE).toFixed(2));
+    const total = pricing.base_item_cost + shipping + customs + SERVICE_FEE;
+    return {
+      shipping: parseFloat(shipping.toFixed(2)),
+      customs: parseFloat(customs.toFixed(2)),
+      total: parseFloat(total.toFixed(2)),
+      totalAED: parseFloat((total * USD_TO_AED).toFixed(2)),
+      chargeable: parseFloat(chargeable.toFixed(2)),
     };
-
-    const { error } = await supabase
-      .from('product_memory')
-      .upsert(memoryData, { onConflict: 'url' });
-    
-    if (!error) {
-      toast.success('🧠 Product details saved to memory!');
-    } else {
-      console.error('Failed to save product memory:', error);
-    }
   };
 
-  // Load memory when dialog opens
+  // تحديث الشحن تلقائياً عند تغيير الوزن
   useEffect(() => {
-    if (isPricingDialogOpen) {
-      loadProductMemory();
-    }
-  }, [isPricingDialogOpen]);
-
-  // Auto-update international shipping when chargeable weight changes
-  useEffect(() => {
-    const volumetricWeight = (pricing.length_in * pricing.width_in * pricing.height_in) / 139;
-    const chargeableWeight = Math.max(pricing.weight_lbs || 0, volumetricWeight || 0);
-    
-    if (chargeableWeight > 0) {
-      const calculatedShipping = Math.round(chargeableWeight * shippingRate * 100) / 100;
-      setPricing(prev => {
-        if (prev.international_shipping !== calculatedShipping) {
-          return { ...prev, international_shipping: calculatedShipping };
-        }
-        return prev;
-      });
-    }
-  }, [pricing.weight_lbs, pricing.length_in, pricing.width_in, pricing.height_in, shippingRate]);
-
-  const calculateTotal = () => {
-    const volumetricWeight = (pricing.length_in * pricing.width_in * pricing.height_in) / 139;
-    const chargeableWeight = Math.max(pricing.weight_lbs, volumetricWeight);
-    const subtotal = pricing.base_item_cost + pricing.domestic_shipping + pricing.tax + pricing.international_shipping + pricing.customs + pricing.other_fees;
-    const discount = Number(order.discount) || 0;
-    return { total: subtotal - discount, chargeableWeight };
-  };
+    const { shipping, customs } = calcPricing();
+    setPricing((prev) => ({ ...prev, international_shipping: shipping, customs }));
+  }, [pricing.weight_lbs, pricing.length_in, pricing.width_in, pricing.height_in, pricing.base_item_cost]);
 
   const handleStatusChange = async (newStatus: OrderStatus) => {
-    const { error } = await supabase
-      .from('orders')
-      .update({ status: newStatus })
-      .eq('id', order.id);
-
+    const { error } = await supabase.from("orders").update({ status: newStatus }).eq("id", order.id);
     if (error) {
-      toast.error('Failed to update status');
+      toast.error("Failed to update status");
       return;
     }
-
-    toast.success('Status updated');
+    toast.success("Status updated");
     onUpdate();
   };
 
-  const handleSavePricing = async () => {
-    setIsSaving(true);
-    const { total, chargeableWeight } = calculateTotal();
-
-    const { error } = await supabase
-      .from('orders')
-      .update({
-        ...pricing,
-        other_fees_note: otherFeesNote || null,
-        chargeable_weight: chargeableWeight,
-        total_amount: total,
-        eta: eta || null,
-        domestic_tracking: domesticTracking || null,
-        international_tracking: internationalTracking || null,
-      })
-      .eq('id', order.id);
-
-    // Save to product memory for future orders
-    await saveToProductMemory();
-
-    setIsSaving(false);
-
-    if (error) {
-      toast.error('Failed to update order');
-      return;
-    }
-
-    toast.success('Order updated');
-    onUpdate();
-  };
-
-  const openWhatsApp = () => {
-    if (!profile?.phone) return;
-    const message = encodeURIComponent(
-      `Hi ${profile.full_name},\n\nUpdate on your order #${order.id.slice(0, 8).toUpperCase()}:\nStatus: ${getStatusLabel(order.status)}\n\nThank you for choosing Egate Shopping!`
-    );
-    window.open(`https://wa.me/${profile.phone.replace(/[^0-9]/g, '')}?text=${message}`, '_blank');
-  };
-
-  // Quick total for the pricing dialog (includes other_fees)
-  const quickTotal = pricing.base_item_cost + pricing.international_shipping + pricing.tax + pricing.other_fees;
-
-  const handleAutoFetchImage = async () => {
-    // 1. Check if URL is present
+  // جلب الصورة تلقائياً
+  const handleAutoFetch = async () => {
     if (!order.product_url) {
-      toast.error("Please enter a product URL first");
+      toast.error("No product URL");
       return;
     }
-
     setIsFetchingImage(true);
     try {
-      // Clean URL for memory lookup
-      const normalizedUrl = cleanUrl(order.product_url);
-
-      // ---------------------------------------------------------
-      // PRIORITY #1: Check Product Memory FIRST 🧠
-      // ---------------------------------------------------------
-      const { data: memoryData } = await supabase
-        .from('product_memory')
-        .select('*')
-        .eq('url', normalizedUrl)
-        .maybeSingle();
-
-      if (memoryData) {
-        // Found in memory! Load everything
-        if (memoryData.image_url) {
-          setProductImageUrl(memoryData.image_url);
-        }
-        
-        const memoryWeight = Number(memoryData.weight) || 0;
-        const memoryLength = Number(memoryData.length_in) || 0;
-        const memoryWidth = Number(memoryData.width_in) || 0;
-        const memoryHeight = Number(memoryData.height_in) || 0;
-        const memoryPrice = Number(memoryData.price) || 0;
-        const memoryMiscFee = Number(memoryData.misc_fee) || 0;
-        const memoryMiscNote = memoryData.misc_note || '';
-        
-        // Calculate chargeable weight from memory data
-        const volumetricWeight = (memoryLength * memoryWidth * memoryHeight) / 139;
-        const chargeableWeight = Math.max(memoryWeight, volumetricWeight);
-        const calculatedShipping = Math.round(chargeableWeight * shippingRate * 100) / 100;
-        
-        setPricing(prev => ({
-          ...prev,
-          base_item_cost: memoryPrice,
-          tax: Math.round(memoryPrice * 0.1 * 100) / 100,
-          weight_lbs: memoryWeight,
-          length_in: memoryLength,
-          width_in: memoryWidth,
-          height_in: memoryHeight,
-          international_shipping: calculatedShipping,
-          other_fees: memoryMiscFee,
-        }));
-        
-        // Load misc note from memory
-        if (memoryMiscNote) {
-          setOtherFeesNote(memoryMiscNote);
-        }
-        
-        setIsPriceFetched(true);
-        setIsAutoFilled(true);
-        
-        toast.success(`⚡ Loaded from Memory: ${memoryData.product_title || 'Product'} (Full Details)`);
-        setIsFetchingImage(false);
-        return; // Stop here - no need to scrape!
-      }
-
-      // ---------------------------------------------------------
-      // PRIORITY #2: Not in Memory -> Scrape + Rules Matching
-      // ---------------------------------------------------------
-      
-      // Fetch Weight Rules
-      const { data: rulesData, error: rulesError } = await supabase
-        .from('shipping_weight_rules')
-        .select('*');
-
-      if (rulesError) {
-        console.error("Error fetching rules:", rulesError);
-      }
-
-      // Fetch Product Metadata (The Scraper)
-      const { data, error } = await supabase.functions.invoke('fetch-metadata', {
-        body: { url: order.product_url }
+      const { data, error } = await supabase.functions.invoke("fetch-metadata", {
+        body: { url: order.product_url },
       });
-
-      if (error) {
-        console.error('Edge function error:', error);
-        toast.error('Could not fetch data - please add manually');
-        return;
-      }
-
-      let hasUpdates = false;
-
-      if (data?.image) {
+      if (!error && data?.image) {
         setProductImageUrl(data.image);
-        hasUpdates = true;
+        toast.success("✅ Image fetched");
       }
-
-      // Handle suggested price with auto-calculation
-      if (data?.suggested_price && data.suggested_price > 0) {
-        const price = data.suggested_price;
-        const autoTax = Math.round(price * 0.1 * 100) / 100; // 10% tax
-        
-        setPricing(prev => ({
-          ...prev,
-          base_item_cost: price,
-          tax: autoTax,
-        }));
-        setIsPriceFetched(true);
-        hasUpdates = true;
-      }
-
-      // Smart Matching Logic (Client-Side)
-      const fullText = (
-        (data?.title || "") + " " + (data?.category || "")
-      ).toLowerCase();
-      
-      console.log("🕵️ Analyzing Text:", fullText);
-
-      let matchedWeight = 0;
-      let matchedKeyword = "";
-      let matchedDims = { l: 0, w: 0, h: 0 };
-
-      // Sort rules by length (longest first)
-      const sortedRules = (rulesData || []).sort((a: WeightRule, b: WeightRule) => 
-        b.keyword.length - a.keyword.length
-      );
-
-      for (const rule of sortedRules) {
-        if (fullText.includes(rule.keyword.toLowerCase())) {
-          matchedWeight = Number(rule.weight);
-          matchedKeyword = rule.keyword;
-          matchedDims = {
-            l: Number(rule.default_length || 0),
-            w: Number(rule.default_width || 0),
-            h: Number(rule.default_height || 0),
-          };
-          break;
-        }
-      }
-
-      // Apply the Weight and Dimensions (If found)
-      if (matchedWeight > 0) {
-        // Calculate chargeable weight considering volumetric if dimensions exist
-        const volumetricWeight = (matchedDims.l * matchedDims.w * matchedDims.h) / 139;
-        const chargeableWeight = Math.max(matchedWeight, volumetricWeight);
-        const calculatedShipping = Math.round(chargeableWeight * shippingRate * 100) / 100;
-        
-        setPricing(prev => ({
-          ...prev,
-          weight_lbs: matchedWeight,
-          length_in: matchedDims.l || prev.length_in,
-          width_in: matchedDims.w || prev.width_in,
-          height_in: matchedDims.h || prev.height_in,
-          international_shipping: calculatedShipping,
-        }));
-        hasUpdates = true;
-        
-        const dimsInfo = matchedDims.l > 0 ? ` 📦 ${matchedDims.l}×${matchedDims.w}×${matchedDims.h}"` : '';
-        toast.success(`⚖️ Matched: "${matchedKeyword}" → ${matchedWeight} lbs${dimsInfo}`);
-      } else if (data?.title) {
-        toast("⚠️ Item details fetched, but no weight rule matched.", {
-          description: "Try adding a rule for this item type in Settings."
-        });
-      }
-
-      if (hasUpdates) {
-        const parts = [];
-        if (data?.image) parts.push('image');
-        if (data?.suggested_price) parts.push(`price ($${data.suggested_price})`);
-        if (matchedWeight > 0) parts.push(`weight (${matchedWeight} lbs)`);
-        toast.success(`✨ Found: ${parts.join(', ')}`);
-      } else if (!data?.image && !data?.suggested_price) {
-        toast.error('No data found - please add manually');
+      if (!error && data?.suggested_price && !pricing.base_item_cost) {
+        setPricing((prev) => ({ ...prev, base_item_cost: data.suggested_price }));
       }
     } catch (err) {
-      console.error('Fetch metadata error:', err);
-      toast.error('Could not fetch data - please add manually');
+      toast.error("Failed to fetch");
     } finally {
       setIsFetchingImage(false);
     }
   };
 
-  const handleSaveQuickPricing = async () => {
-    setIsSavingPricing(true);
-    
+  // حفظ التسعير
+  const handleSavePricing = async () => {
+    setIsSaving(true);
+    const { shipping, customs, total, chargeable } = calcPricing();
+
     const { error } = await supabase
-      .from('orders')
+      .from("orders")
       .update({
         base_item_cost: pricing.base_item_cost,
-        international_shipping: pricing.international_shipping,
-        tax: pricing.tax,
-        other_fees: pricing.other_fees,
-        other_fees_note: otherFeesNote || null,
-        total_amount: quickTotal,
+        international_shipping: shipping,
+        customs,
+        weight_lbs: pricing.weight_lbs,
+        length_in: pricing.length_in,
+        width_in: pricing.width_in,
+        height_in: pricing.height_in,
+        chargeable_weight: chargeable,
+        total_amount: total,
         product_image: productImageUrl || null,
-        status: 'pending_payment',
+        status: "pending_payment",
       })
-      .eq('id', order.id);
+      .eq("id", order.id);
 
-    // Save to product memory for future orders
-    await saveToProductMemory();
-
-    setIsSavingPricing(false);
-
+    setIsSaving(false);
     if (error) {
-      toast.error('Failed to update pricing');
+      toast.error("Failed to save");
       return;
     }
-
-    toast.success('Pricing updated - Order set to Pending Payment');
+    toast.success("✅ Pricing saved — Order set to Pending Payment");
     setIsPricingDialogOpen(false);
-    setIsAutoFilled(false);
     onUpdate();
   };
 
-  const { total, chargeableWeight } = calculateTotal();
+  // حفظ أرقام التتبع
+  const handleSaveTracking = async () => {
+    setIsSaving(true);
+    const { error } = await supabase
+      .from("orders")
+      .update({
+        domestic_tracking: domesticTracking || null,
+        domestic_carrier: domesticCarrier || null,
+        international_tracking: internationalTracking || null,
+        international_carrier: internationalCarrier || null,
+        eta: eta || null,
+      } as any)
+      .eq("id", order.id);
+
+    setIsSaving(false);
+    if (error) {
+      toast.error("Failed to save tracking");
+      return;
+    }
+    toast.success("✅ Tracking numbers saved");
+    setIsTrackingDialogOpen(false);
+    onUpdate();
+  };
+
+  const openWhatsApp = () => {
+    if (!profile?.phone) return;
+    const msg = encodeURIComponent(
+      `Hi ${profile.full_name},\n\nUpdate on your order #${order.id.slice(0, 8).toUpperCase()}:\nStatus: ${getStatusLabel(order.status)}\n\nThank you for choosing Egate Shopping!`,
+    );
+    window.open(`https://wa.me/${profile.phone.replace(/[^0-9]/g, "")}?text=${msg}`, "_blank");
+  };
+
+  const { shipping, customs, total, totalAED, chargeable } = calcPricing();
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
       <div className="p-4 rounded-2xl bg-card border border-border">
         {/* Header */}
         <div className="flex flex-col sm:flex-row gap-4">
+          {/* صورة المنتج */}
           <div className="h-16 w-16 shrink-0 rounded-xl bg-muted overflow-hidden flex items-center justify-center">
             {order.product_image ? (
               <img
                 src={order.product_image}
-                alt={order.product_title || 'Product'}
+                alt={order.product_title || "Product"}
                 className="h-full w-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = "none";
+                }}
               />
             ) : (
               <Package className="h-8 w-8 text-muted-foreground" />
@@ -558,10 +239,8 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-2 mb-2">
               <div>
-                <h3 className="font-medium">
-                  #{order.id.slice(0, 8).toUpperCase()}
-                </h3>
-                <p className="text-sm text-muted-foreground truncate">
+                <h3 className="font-medium">#{order.id.slice(0, 8).toUpperCase()}</h3>
+                <p className="text-sm text-muted-foreground truncate max-w-xs">
                   {order.product_title || order.product_url}
                 </p>
               </div>
@@ -579,10 +258,10 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
               </Select>
             </div>
 
-            {/* Customer Info */}
+            {/* معلومات العميل */}
             {profile && (
-              <div className="flex flex-wrap items-center gap-3 text-sm">
-                <Link 
+              <div className="flex flex-wrap items-center gap-3 text-sm mb-2">
+                <Link
                   to={`/admin/customer/${order.user_id}`}
                   className="flex items-center gap-1 text-primary hover:underline"
                   onClick={(e) => e.stopPropagation()}
@@ -609,366 +288,289 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
               </div>
             )}
 
-            {/* Key order details - BOLD for purchasing */}
-            <div className="flex flex-wrap gap-3 mt-2 p-2 bg-muted/50 rounded-lg text-sm">
+            {/* تفاصيل الطلب */}
+            <div className="flex flex-wrap gap-3 p-2 bg-muted/50 rounded-lg text-sm mb-3">
               {order.color && (
-                <span><strong className="text-primary">Color:</strong> <strong>{order.color}</strong></span>
+                <span>
+                  <strong className="text-primary">Color:</strong> {order.color}
+                </span>
               )}
               {order.size && (
-                <span><strong className="text-primary">Size:</strong> <strong>{order.size}</strong></span>
+                <span>
+                  <strong className="text-primary">Size:</strong> {order.size}
+                </span>
               )}
-              <span>Qty: <strong>{order.quantity}</strong></span>
+              <span>
+                Qty: <strong>{order.quantity}</strong>
+              </span>
               {order.special_notes && (
-                <span className="text-warning"><strong>Notes:</strong> {order.special_notes}</span>
+                <span className="text-warning">
+                  <strong>Notes:</strong> {order.special_notes}
+                </span>
               )}
             </div>
 
-            {/* Quick Price Button */}
-            <div className="flex items-center gap-2 mt-3">
+            {/* أزرار الإجراءات */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* زر التسعير */}
               <Dialog open={isPricingDialogOpen} onOpenChange={setIsPricingDialogOpen}>
                 <DialogTrigger asChild>
                   <Button size="sm" className="gradient-accent border-0">
                     <DollarSign className="h-4 w-4 mr-1" />
-                    Set Price & Details
+                    Set Price
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+                <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>Set Order Price</DialogTitle>
-                    <DialogDescription>
-                      Order #{order.id.slice(0, 8).toUpperCase()} — Updates status to "Pending Payment"
-                    </DialogDescription>
+                    <DialogDescription>Order #{order.id.slice(0, 8).toUpperCase()}</DialogDescription>
                   </DialogHeader>
-                  
-                  <div className="space-y-5 py-4">
-                    {/* Header Section: Product Link */}
-                    <div className="space-y-3">
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          className="flex-1 justify-start gap-2 text-primary hover:text-primary"
-                          onClick={() => window.open(order.product_url, '_blank')}
-                        >
-                          <ExternalLink className="h-4 w-4" />
-                          🔗 Open Customer Link
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={handleAutoFetchImage}
-                          disabled={isFetchingImage}
-                          className="gap-2"
-                        >
-                          {isFetchingImage ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Wand2 className="h-4 w-4" />
-                          )}
-                          {isFetchingImage ? 'Fetching...' : '🪄 Auto-Fetch'}
-                        </Button>
-                      </div>
-                      
-                      {/* User's Options */}
-                      <div className="p-3 bg-muted/50 rounded-lg border border-border">
-                        <Label className="text-xs text-muted-foreground mb-2 block">Customer Options</Label>
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                          <div>
-                            <span className="text-muted-foreground">Color:</span>{' '}
-                            <strong className="text-foreground">{order.color || '—'}</strong>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Size:</span>{' '}
-                            <strong className="text-foreground">{order.size || '—'}</strong>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Quantity:</span>{' '}
-                            <strong className="text-foreground">{order.quantity}</strong>
-                          </div>
-                          {order.special_notes && (
-                            <div className="col-span-2">
-                              <span className="text-muted-foreground">Notes:</span>{' '}
-                              <strong className="text-warning">{order.special_notes}</strong>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+
+                  <div className="space-y-4 py-4">
+                    {/* رابط المنتج + Auto Fetch */}
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        className="flex-1 justify-start gap-2 text-primary"
+                        onClick={() => window.open(order.product_url, "_blank")}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        Open Product Link
+                      </Button>
+                      <Button variant="outline" onClick={handleAutoFetch} disabled={isFetchingImage}>
+                        {isFetchingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                        Auto
+                      </Button>
                     </div>
 
-                    {/* Image Section */}
+                    {/* الصورة */}
                     <div className="space-y-2">
-                      <Label htmlFor="product-image-url">Product Image URL</Label>
-                      <div className="flex gap-3">
-                        <div className="flex-1">
-                          <Input
-                            id="product-image-url"
-                            type="url"
-                            value={productImageUrl}
-                            onChange={(e) => setProductImageUrl(e.target.value)}
-                            placeholder="https://..."
-                          />
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Paste the image address here to update the product photo.
-                          </p>
-                        </div>
-                        <div className="h-16 w-16 shrink-0 rounded-lg border border-border bg-muted flex items-center justify-center overflow-hidden">
+                      <Label>Product Image URL</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          value={productImageUrl}
+                          onChange={(e) => setProductImageUrl(e.target.value)}
+                          placeholder="https://..."
+                          className="flex-1"
+                        />
+                        <div className="h-12 w-12 shrink-0 rounded-lg border bg-muted overflow-hidden flex items-center justify-center">
                           {productImageUrl ? (
-                            <img 
-                              src={productImageUrl} 
-                              alt="Preview" 
+                            <img
+                              src={productImageUrl}
+                              alt="Preview"
                               className="h-full w-full object-cover"
                               onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = 'none';
-                                (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                                (e.target as HTMLImageElement).style.display = "none";
                               }}
                             />
-                          ) : null}
-                          <Package className={`h-6 w-6 text-muted-foreground ${productImageUrl ? 'hidden' : ''}`} />
+                          ) : (
+                            <Package className="h-5 w-5 text-muted-foreground" />
+                          )}
                         </div>
                       </div>
                     </div>
 
-                    {/* Pricing Section */}
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <Label className="text-sm font-medium">Pricing</Label>
-                        {isAutoFilled && (
-                          <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/30">
-                            <Zap className="h-3 w-3 mr-1" />
-                            Data auto-filled from history
-                          </Badge>
-                        )}
+                    {/* سعر المنتج */}
+                    <div className="space-y-1">
+                      <Label>Product Price (Amazon/eBay) $</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={pricing.base_item_cost}
+                        onChange={(e) =>
+                          setPricing((prev) => ({ ...prev, base_item_cost: parseFloat(e.target.value) || 0 }))
+                        }
+                        placeholder="0.00"
+                      />
+                    </div>
+
+                    {/* الوزن والأبعاد */}
+                    <div className="space-y-2 p-3 bg-muted/30 rounded-lg border">
+                      <Label className="text-sm font-medium">⚖️ Weight & Dimensions</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Weight (lbs)</Label>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={pricing.weight_lbs || ""}
+                            onChange={(e) =>
+                              setPricing((prev) => ({ ...prev, weight_lbs: parseFloat(e.target.value) || 0 }))
+                            }
+                            placeholder="0.0"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">Chargeable</Label>
+                          <div className="h-9 flex items-center px-3 bg-primary/10 rounded-md border border-primary/20">
+                            <span className="font-bold text-primary text-sm">{chargeable} lbs</span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="grid gap-3">
-                        <div className="space-y-1">
-                          <Label htmlFor="item-cost" className="text-xs text-muted-foreground flex items-center gap-2">
-                            Item Cost ($)
-                            {isPriceFetched && (
-                              <Badge variant="outline" className="text-xs bg-success/10 text-success border-success/30">
-                                <Zap className="h-2 w-2 mr-1" />
-                                Auto-fetched
-                              </Badge>
-                            )}
-                          </Label>
-                          <Input
-                            id="item-cost"
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={pricing.base_item_cost}
-                            onChange={(e) => {
-                              const newCost = parseFloat(e.target.value) || 0;
-                              const autoTax = Math.round(newCost * 0.1 * 100) / 100; // 10% tax, rounded to 2 decimals
-                              setPricing(prev => ({ 
-                                ...prev, 
-                                base_item_cost: newCost,
-                                tax: autoTax
-                              }));
-                              setIsPriceFetched(false); // Clear auto-fetch badge on manual change
-                            }}
-                            placeholder="0.00"
-                          />
-                          <p className="text-xs text-muted-foreground">Tax auto-calculates at 10%</p>
-                        </div>
-                        
-                        {/* Shipping Calculator Section with Dimensional Weight */}
-                        <div className="space-y-3 p-3 bg-muted/30 rounded-lg border border-border">
-                          <Label className="text-xs text-muted-foreground font-medium">📦 Shipping Calculator</Label>
-                          
-                          {/* Dimensions Row */}
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Dimensions (in)</Label>
-                            <div className="grid grid-cols-3 gap-2">
-                              <Input
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                value={pricing.length_in || ''}
-                                onChange={(e) => {
-                                  const length = parseFloat(e.target.value) || 0;
-                                  setPricing(prev => ({ ...prev, length_in: length }));
-                                }}
-                                placeholder="L"
-                              />
-                              <Input
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                value={pricing.width_in || ''}
-                                onChange={(e) => {
-                                  const width = parseFloat(e.target.value) || 0;
-                                  setPricing(prev => ({ ...prev, width_in: width }));
-                                }}
-                                placeholder="W"
-                              />
-                              <Input
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                value={pricing.height_in || ''}
-                                onChange={(e) => {
-                                  const height = parseFloat(e.target.value) || 0;
-                                  setPricing(prev => ({ ...prev, height_in: height }));
-                                }}
-                                placeholder="H"
-                              />
-                            </div>
-                            {/* Volumetric Weight Display */}
-                            {pricing.length_in > 0 && pricing.width_in > 0 && pricing.height_in > 0 && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                📦 Volumetric: <strong className="text-primary">
-                                  {((pricing.length_in * pricing.width_in * pricing.height_in) / 139).toFixed(2)} lbs
-                                </strong>
-                                <span className="text-muted-foreground/60 ml-1">
-                                  ({pricing.length_in}×{pricing.width_in}×{pricing.height_in} ÷ 139)
-                                </span>
-                              </p>
-                            )}
-                          </div>
-                          
-                          {/* Weight and Rate Row */}
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                              <Label htmlFor="weight-lbs" className="text-xs text-muted-foreground">Actual Weight (lbs)</Label>
-                              <Input
-                                id="weight-lbs"
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                value={pricing.weight_lbs || ''}
-                                onChange={(e) => {
-                                  const weight = parseFloat(e.target.value) || 0;
-                                  setPricing(prev => ({ ...prev, weight_lbs: weight }));
-                                }}
-                                placeholder="0.0"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label htmlFor="rate-per-lb" className="text-xs text-muted-foreground">Rate per lb ($)</Label>
-                              <Input
-                                id="rate-per-lb"
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={shippingRate}
-                                onChange={(e) => {
-                                  const rate = parseFloat(e.target.value) || 0;
-                                  setShippingRate(rate);
-                                }}
-                                placeholder="8.00"
-                              />
-                            </div>
-                          </div>
-                          
-                          {/* Chargeable Weight & Calculation Display */}
-                          {(() => {
-                            const volumetricWeight = (pricing.length_in * pricing.width_in * pricing.height_in) / 139;
-                            const chargeableWeight = Math.max(pricing.weight_lbs || 0, volumetricWeight || 0);
-                            const calculatedShipping = Math.round(chargeableWeight * shippingRate * 100) / 100;
-                            const isVolumetricHigher = volumetricWeight > (pricing.weight_lbs || 0) && volumetricWeight > 0;
-                            
-                            return chargeableWeight > 0 ? (
-                              <div className="p-2 bg-primary/10 rounded-lg border border-primary/30">
-                                <div className="flex items-center justify-between text-sm">
-                                  <span className="text-muted-foreground">
-                                    ⚖️ Chargeable Weight:
-                                  </span>
-                                  <span className="font-bold text-primary">
-                                    {chargeableWeight.toFixed(2)} lbs
-                                    {isVolumetricHigher && (
-                                      <span className="text-xs font-normal ml-1 text-warning">(volumetric)</span>
-                                    )}
-                                  </span>
-                                </div>
-                                <div className="flex items-center justify-between text-sm mt-1">
-                                  <span className="text-muted-foreground">
-                                    {chargeableWeight.toFixed(2)} lbs × ${shippingRate.toFixed(2)} =
-                                  </span>
-                                  <span className="font-bold text-success">
-                                    ${calculatedShipping.toFixed(2)}
-                                  </span>
-                                </div>
-                              </div>
-                            ) : null;
-                          })()}
-                        </div>
-
-                        <div className="space-y-1">
-                          <Label htmlFor="intl-shipping" className="text-xs text-muted-foreground">International Shipping ($)</Label>
-                          <Input
-                            id="intl-shipping"
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={pricing.international_shipping}
-                            onChange={(e) => setPricing({ ...pricing, international_shipping: parseFloat(e.target.value) || 0 })}
-                            placeholder="0.00"
-                          />
-                        </div>
-                        
-                        <div className="space-y-1">
-                          <Label htmlFor="service-fee" className="text-xs text-muted-foreground">Service Fee / Tax ($)</Label>
-                          <Input
-                            id="service-fee"
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={pricing.tax}
-                            onChange={(e) => setPricing({ ...pricing, tax: parseFloat(e.target.value) || 0 })}
-                            placeholder="0.00"
-                          />
-                        </div>
-
-                        {/* Other Fees with Note */}
-                        <div className="space-y-1">
-                          <Label htmlFor="other-fees" className="text-xs text-muted-foreground">Other / Misc Fees ($)</Label>
-                          <div className="flex gap-2">
+                      <div className="grid grid-cols-3 gap-2">
+                        {["length_in", "width_in", "height_in"].map((dim, i) => (
+                          <div key={dim} className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">{["L", "W", "H"][i]} (in)</Label>
                             <Input
-                              id="other-fees"
                               type="number"
-                              step="0.01"
+                              step="0.1"
                               min="0"
-                              value={pricing.other_fees}
-                              onChange={(e) => setPricing({ ...pricing, other_fees: parseFloat(e.target.value) || 0 })}
-                              placeholder="0.00"
-                              className="w-28"
-                            />
-                            <Input
-                              type="text"
-                              value={otherFeesNote}
-                              onChange={(e) => setOtherFeesNote(e.target.value)}
-                              placeholder="Note (e.g., Express handling)"
-                              className="flex-1"
+                              value={(pricing as any)[dim] || ""}
+                              onChange={(e) =>
+                                setPricing((prev) => ({ ...prev, [dim]: parseFloat(e.target.value) || 0 }))
+                              }
+                              placeholder="0"
                             />
                           </div>
-                        </div>
+                        ))}
                       </div>
-                      
-                      <div className="p-4 bg-primary/10 rounded-lg border border-primary/20">
-                        <Label className="text-sm text-muted-foreground">Total Customer Price</Label>
-                        <p className="text-2xl font-display font-bold text-primary">
-                          ${quickTotal.toFixed(2)}
-                        </p>
+                    </div>
+
+                    {/* ملخص السعر */}
+                    <div className="space-y-2 p-3 bg-muted/30 rounded-lg border">
+                      <Label className="text-sm font-medium">💰 Price Breakdown</Label>
+                      {[
+                        ["🛒 Product Price", `$${pricing.base_item_cost.toFixed(2)}`],
+                        [`✈️ Shipping (${chargeable} lbs × $10)`, `$${shipping}`],
+                        ["🏛️ Customs (10%)", `$${customs}`],
+                        ["⚙️ Service Fee", `$${SERVICE_FEE}`],
+                      ].map(([label, value]) => (
+                        <div key={label} className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">{label}</span>
+                          <span className="font-medium">{value}</span>
+                        </div>
+                      ))}
+                      <div className="border-t pt-2 flex justify-between items-center">
+                        <span className="font-bold">Total</span>
+                        <div className="text-right">
+                          <p className="font-bold text-lg text-primary">${total}</p>
+                          <p className="text-xs text-muted-foreground">AED {totalAED}</p>
+                        </div>
                       </div>
                     </div>
                   </div>
-                  
+
                   <DialogFooter>
                     <Button variant="outline" onClick={() => setIsPricingDialogOpen(false)}>
                       Cancel
                     </Button>
-                    <Button 
-                      onClick={handleSaveQuickPricing} 
-                      disabled={isSavingPricing}
-                      className="gradient-accent border-0"
-                    >
-                      {isSavingPricing ? 'Saving...' : 'Save & Update'}
+                    <Button onClick={handleSavePricing} disabled={isSaving} className="gradient-accent border-0">
+                      {isSaving ? "Saving..." : "Save & Set Pending"}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
 
+              {/* زر أرقام التتبع */}
+              <Dialog open={isTrackingDialogOpen} onOpenChange={setIsTrackingDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" variant="outline">
+                    <Truck className="h-4 w-4 mr-1" />
+                    Tracking
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Tracking Numbers</DialogTitle>
+                    <DialogDescription>Order #{order.id.slice(0, 8).toUpperCase()}</DialogDescription>
+                  </DialogHeader>
+
+                  <div className="space-y-5 py-4">
+                    {/* رقم التتبع الداخلي */}
+                    <div className="space-y-3 p-3 bg-muted/30 rounded-lg border">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-primary" />
+                        <Label className="font-medium">📦 Domestic Tracking</Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground">From seller → Oregon Warehouse</p>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">Carrier</Label>
+                        <Select value={domesticCarrier} onValueChange={setDomesticCarrier}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select carrier..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {DOMESTIC_CARRIERS.map((c) => (
+                              <SelectItem key={c} value={c}>
+                                {c}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Tracking Number</Label>
+                        <Input
+                          value={domesticTracking}
+                          onChange={(e) => setDomesticTracking(e.target.value)}
+                          placeholder="e.g., 1Z999AA10123456784"
+                        />
+                      </div>
+                    </div>
+
+                    {/* رقم التتبع الدولي */}
+                    <div className="space-y-3 p-3 bg-muted/30 rounded-lg border">
+                      <div className="flex items-center gap-2">
+                        <Truck className="h-4 w-4 text-primary" />
+                        <Label className="font-medium">✈️ International Tracking</Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground">From Oregon Warehouse → Customer</p>
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">Carrier</Label>
+                        <Select value={internationalCarrier} onValueChange={setInternationalCarrier}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select carrier..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {INTERNATIONAL_CARRIERS.map((c) => (
+                              <SelectItem key={c} value={c}>
+                                {c}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Tracking Number</Label>
+                        <Input
+                          value={internationalTracking}
+                          onChange={(e) => setInternationalTracking(e.target.value)}
+                          placeholder="e.g., JD014600006261234567"
+                        />
+                      </div>
+                    </div>
+
+                    {/* ETA */}
+                    <div className="space-y-1">
+                      <Label>Expected Delivery Date</Label>
+                      <Input type="date" value={eta} onChange={(e) => setEta(e.target.value)} />
+                    </div>
+                  </div>
+
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsTrackingDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleSaveTracking} disabled={isSaving} className="gradient-hero border-0">
+                      {isSaving ? "Saving..." : "Save Tracking"}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              {/* إظهار السعر */}
               {order.total_amount > 0 && (
                 <Badge variant="outline" className="text-primary border-primary/30">
                   ${Number(order.total_amount).toFixed(2)}
+                </Badge>
+              )}
+
+              {/* إظهار رقم التتبع الدولي إذا موجود */}
+              {(order as any).international_tracking && (
+                <Badge variant="outline" className="text-success border-success/30 text-xs">
+                  ✈️ {(order as any).international_carrier} — {(order as any).international_tracking}
                 </Badge>
               )}
             </div>
@@ -981,13 +583,13 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
           </CollapsibleTrigger>
         </div>
 
-        <CollapsibleContent className="mt-4 pt-4 border-t border-border space-y-6">
-          {/* Product Link */}
+        {/* تفاصيل موسعة */}
+        <CollapsibleContent className="mt-4 pt-4 border-t border-border space-y-4">
           <div>
             <Label className="text-xs text-muted-foreground">Product URL</Label>
-            <a 
-              href={order.product_url} 
-              target="_blank" 
+            <a
+              href={order.product_url}
+              target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1 text-sm text-primary hover:underline truncate"
             >
@@ -996,160 +598,22 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
             </a>
           </div>
 
-          {/* Pricing */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="space-y-2">
-              <Label>Base Item Cost ($)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={pricing.base_item_cost}
-                onChange={(e) => setPricing({ ...pricing, base_item_cost: parseFloat(e.target.value) || 0 })}
-              />
+          {/* ملخص التتبع */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-3 bg-muted/30 rounded-lg">
+              <Label className="text-xs text-muted-foreground">📦 Domestic</Label>
+              <p className="text-sm font-medium mt-1">
+                {(order as any).domestic_carrier || "—"}{" "}
+                {(order as any).domestic_tracking ? `· ${(order as any).domestic_tracking}` : ""}
+              </p>
             </div>
-            <div className="space-y-2">
-              <Label>Domestic Shipping ($)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={pricing.domestic_shipping}
-                onChange={(e) => setPricing({ ...pricing, domestic_shipping: parseFloat(e.target.value) || 0 })}
-              />
+            <div className="p-3 bg-muted/30 rounded-lg">
+              <Label className="text-xs text-muted-foreground">✈️ International</Label>
+              <p className="text-sm font-medium mt-1">
+                {(order as any).international_carrier || "—"}{" "}
+                {(order as any).international_tracking ? `· ${(order as any).international_tracking}` : ""}
+              </p>
             </div>
-            <div className="space-y-2">
-              <Label>Tax ($)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={pricing.tax}
-                onChange={(e) => setPricing({ ...pricing, tax: parseFloat(e.target.value) || 0 })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>International Shipping ($)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={pricing.international_shipping}
-                onChange={(e) => setPricing({ ...pricing, international_shipping: parseFloat(e.target.value) || 0 })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Customs ($)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={pricing.customs}
-                onChange={(e) => setPricing({ ...pricing, customs: parseFloat(e.target.value) || 0 })}
-              />
-            </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label>Other / Misc Fees ($)</Label>
-              <div className="flex gap-2">
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={pricing.other_fees}
-                  onChange={(e) => setPricing({ ...pricing, other_fees: parseFloat(e.target.value) || 0 })}
-                  className="w-28"
-                />
-                <Input
-                  type="text"
-                  value={otherFeesNote}
-                  onChange={(e) => setOtherFeesNote(e.target.value)}
-                  placeholder="Note (optional)"
-                  className="flex-1"
-                />
-              </div>
-            </div>
-            <div className="p-3 bg-primary/5 rounded-lg">
-              <Label className="text-xs text-muted-foreground">Total</Label>
-              <p className="text-xl font-display font-bold text-primary">${total.toFixed(2)}</p>
-              {Number(order.discount) > 0 && (
-                <p className="text-xs text-success">-${order.discount} discount</p>
-              )}
-            </div>
-          </div>
-
-          {/* Weight & Dimensions */}
-          <div className="grid gap-4 sm:grid-cols-4">
-            <div className="space-y-2">
-              <Label>Weight (lbs)</Label>
-              <Input
-                type="number"
-                step="0.1"
-                value={pricing.weight_lbs}
-                onChange={(e) => setPricing({ ...pricing, weight_lbs: parseFloat(e.target.value) || 0 })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Length (in)</Label>
-              <Input
-                type="number"
-                step="0.1"
-                value={pricing.length_in}
-                onChange={(e) => setPricing({ ...pricing, length_in: parseFloat(e.target.value) || 0 })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Width (in)</Label>
-              <Input
-                type="number"
-                step="0.1"
-                value={pricing.width_in}
-                onChange={(e) => setPricing({ ...pricing, width_in: parseFloat(e.target.value) || 0 })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Height (in)</Label>
-              <Input
-                type="number"
-                step="0.1"
-                value={pricing.height_in}
-                onChange={(e) => setPricing({ ...pricing, height_in: parseFloat(e.target.value) || 0 })}
-              />
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Chargeable Weight: <strong>{chargeableWeight.toFixed(2)} lbs</strong> (max of actual vs volumetric)
-          </p>
-
-          {/* Tracking & ETA */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div className="space-y-2">
-              <Label>ETA Date</Label>
-              <Input
-                type="date"
-                value={eta}
-                onChange={(e) => setEta(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Domestic Tracking (Admin Only)</Label>
-              <Input
-                value={domesticTracking}
-                onChange={(e) => setDomesticTracking(e.target.value)}
-                placeholder="Internal tracking..."
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>International Tracking</Label>
-              <Input
-                value={internationalTracking}
-                onChange={(e) => setInternationalTracking(e.target.value)}
-                placeholder="Customer visible tracking..."
-              />
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setIsOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSavePricing} disabled={isSaving} className="gradient-hero border-0">
-              {isSaving ? 'Saving...' : 'Save Changes'}
-            </Button>
           </div>
         </CollapsibleContent>
       </div>
