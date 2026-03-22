@@ -119,9 +119,9 @@ export default function NewOrder() {
       // أولاً: هل الرابط موجود في الذاكرة؟
       const { data: cached } = await supabase.from("product_cache").select("*").eq("url", url).single();
 
-      if (cached && cached.actual_weight_lbs) {
-        const vol = calcVolumetric(cached.length || 0, cached.width || 0, cached.height || 0);
-        const chargeable = Math.max(cached.actual_weight_lbs, vol);
+      if (cached && cached.weight_lbs) {
+        const vol = calcVolumetric(cached.length_in || 0, cached.width_in || 0, cached.height_in || 0);
+        const chargeable = Math.max(cached.weight_lbs, vol);
         const shipping = calcShippingCost(chargeable);
         const cif = shipping;
         const duty = parseFloat((cif * CUSTOMS_RATE).toFixed(2));
@@ -130,7 +130,7 @@ export default function NewOrder() {
         const totalUSD = parseFloat((shipping + duty + vat + serviceFee).toFixed(2));
 
         setPricing({
-          actualWeight: cached.actual_weight_lbs,
+          actualWeight: cached.weight_lbs,
           volumetricWeight: vol,
           chargeableWeight: chargeable,
           shippingCost: shipping,
@@ -140,7 +140,7 @@ export default function NewOrder() {
           totalUSD,
           totalAED: parseFloat((totalUSD * USD_TO_AED).toFixed(2)),
           source: "cache",
-          category: cached.category || "other",
+          category: "other",
         });
         toast.success("✅ السعر محسوب من ذاكرة المنتجات");
         return;
