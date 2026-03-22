@@ -283,21 +283,18 @@ export default function NewOrder() {
     const { error } = await supabase.from("orders").insert({
       user_id: user?.id,
       product_url: formData.product_url,
-      product_name: formData.product_title || "Product Order",
+      product_title: formData.product_title || "Product Order",
       product_image: formData.product_image || null,
       color: formData.color || null,
       size: formData.size || null,
       quantity: formData.quantity,
       special_notes: formData.special_notes || null,
-      actual_weight: pricing?.actualWeight || null,
-      length: null,
-      width: null,
-      height: null,
+      weight_lbs: pricing?.actualWeight || null,
       volumetric_weight: pricing?.volumetricWeight || null,
       chargeable_weight: pricing?.chargeableWeight || null,
-      shipping_cost: pricing?.shippingCost || null,
+      international_shipping: pricing?.shippingCost || null,
       discount: promoDiscount,
-      status: "Pending",
+      status: "pending_payment",
     });
 
     setIsSubmitting(false);
