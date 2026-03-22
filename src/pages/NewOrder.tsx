@@ -167,7 +167,7 @@ export default function NewOrder() {
         width = c.width || 0;
         height = c.height || 0;
         category = c.category || "other";
-        productPrice = aiData?.price || productPrice;
+        productPrice = metaPrice > 0 ? metaPrice : (aiData?.price || productPrice);
         source = "cache";
         toast.success("⚡ الوزن من الذاكرة");
       } else {
