@@ -162,16 +162,17 @@ export default function NewOrder() {
       // ثالثاً: إذا لم يجد → استخدم الجدول الافتراضي حسب الفئة
       if (!weight) {
         const { data: categoryData } = await supabase
-          .from("shipping_weight_rules")
+          .from("category_defaults" as any)
           .select("*")
-          .ilike("keyword", `%${category}%`)
+          .eq("category_name", category)
           .single();
 
         if (categoryData) {
-          weight = categoryData.weight;
-          length = categoryData.default_length;
-          width = categoryData.default_width;
-          height = categoryData.default_height;
+          const cd = categoryData as any;
+          weight = cd.default_weight_lbs;
+          length = cd.default_length;
+          width = cd.default_width;
+          height = cd.default_height;
           source = "category_default";
         } else {
           weight = 2.0;
@@ -186,12 +187,14 @@ export default function NewOrder() {
       await supabase.from("product_cache").upsert(
         {
           url,
-          image_url: null,
-          weight_lbs: weight,
-          length_in: length || null,
-          width_in: width || null,
-          height_in: height || null,
-        },
+          product_name: productName || aiData?.productName,
+          category,
+          actual_weight_lbs: weight,
+          length: length || null,
+          width: width || null,
+          height: height || null,
+          source,
+        } as any,
         { onConflict: "url" },
       );
 
