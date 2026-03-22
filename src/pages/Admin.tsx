@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import AdminOrderCard from '@/components/admin/AdminOrderCard';
+import { AdminOrderCard } from '@/components/admin/AdminOrderCard';
 import { AdminDisputeCard } from '@/components/admin/AdminDisputeCard';
 import type { Order, Dispute, Profile } from '@/lib/supabase';
 
