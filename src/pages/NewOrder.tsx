@@ -161,13 +161,13 @@ export default function NewOrder() {
       // ثالثاً: إذا لم يجد → استخدم الجدول الافتراضي حسب الفئة
       if (!weight) {
         const { data: categoryData } = await supabase
-          .from("category_defaults")
+          .from("shipping_weight_rules")
           .select("*")
-          .eq("category_name", category)
+          .ilike("keyword", `%${category}%`)
           .single();
 
         if (categoryData) {
-          weight = categoryData.default_weight_lbs;
+          weight = categoryData.weight;
           length = categoryData.default_length;
           width = categoryData.default_width;
           height = categoryData.default_height;
