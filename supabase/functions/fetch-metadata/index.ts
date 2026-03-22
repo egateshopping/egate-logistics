@@ -149,15 +149,32 @@ async function handleEbay(url: string) {
             }
         }
         
-        // Extract price from JSON-LD or page content
+        // Extract price - prioritize og:price or the main listing price
         let price = "0";
-        const jsonLdMatch = html.match(/"price"\s*:\s*"?([0-9.]+)"?/);
-        if (jsonLdMatch) {
-            price = jsonLdMatch[1];
+        // 1. Try og:price:amount meta tag (most reliable for the main listing)
+        const ogPriceMatch = html.match(/property="og:price:amount"\s+content="([^"]+)"/i) ||
+                             html.match(/content="([^"]+)"\s+property="og:price:amount"/i);
+        if (ogPriceMatch) {
+            price = ogPriceMatch[1];
         } else {
-            const priceMatch = html.match(/(?:US\s*)?\$([0-9,]+(?:\.[0-9]{2})?)/);
-            if (priceMatch) {
-                price = priceMatch[1].replace(/,/g, '');
+            // 2. Try eBay's BIN price pattern: "US $XX.XX" near the main listing area
+            // Look for the price in the itemprop="price" attribute
+            const itemPriceMatch = html.match(/itemprop="price"\s+content="([^"]+)"/i) ||
+                                   html.match(/content="([^"]+)"\s+itemprop="price"/i);
+            if (itemPriceMatch) {
+                price = itemPriceMatch[1];
+            } else {
+                // 3. Try JSON-LD but only from Product schema (not promoted items)
+                const productJsonLd = html.match(/"@type"\s*:\s*"Product"[^}]*?"price"\s*:\s*"?([0-9.]+)"?/s);
+                if (productJsonLd) {
+                    price = productJsonLd[1];
+                } else {
+                    // 4. Fallback: US $XX.XX pattern
+                    const priceMatch = html.match(/US\s+\$([0-9,]+(?:\.[0-9]{2})?)/);
+                    if (priceMatch) {
+                        price = priceMatch[1].replace(/,/g, '');
+                    }
+                }
             }
         }
 
@@ -1287,9 +1304,24 @@ async function handleGeneric(url: string) {
         if (image.includes('jomashop')) {
              image = image.replace('width=150', 'width=600').replace('height=150', 'height=600');
         }
+        // Upgrade eBay thumbnails to high-res
+        if (image.includes('ebayimg.com') && image.includes('/s-l')) {
+            image = image.replace(/s-l\d+\./, 's-l1600.');
+        }
 
-        const priceMatch = text.match(/(\$|USD)\s?([0-9,]+(\.[0-9]{2})?)/i);
-        const price = priceMatch ? priceMatch[2].replace(/,/g, '') : "0";
+        // For eBay: look for "US $XX.XX" which is the main listing price pattern
+        let price = "0";
+        if (url.includes("ebay.")) {
+            // eBay main listing price appears as "US $38.00" in page text
+            const ebayPriceMatch = text.match(/US\s+\$([0-9,]+(?:\.[0-9]{2})?)/);
+            if (ebayPriceMatch) {
+                price = ebayPriceMatch[1].replace(/,/g, '');
+            }
+        }
+        if (price === "0") {
+            const priceMatch = text.match(/(\$|USD)\s?([0-9,]+(\.[0-9]{2})?)/i);
+            price = priceMatch ? priceMatch[2].replace(/,/g, '') : "0";
+        }
 
         return { title, description: "Fetched automatically", image, price, url };
     } catch (e) { return null; }
