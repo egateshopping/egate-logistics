@@ -119,31 +119,30 @@ serve(async (req) => {
     // ── Step 4: If no weight from name, try to find it in page text ──
     if (!weightLbs && jinaText) {
       // Look for "Item Weight" or "Shipping Weight" patterns (common on Amazon)
+      // Handle no-space cases like "Item Weight20 Pounds"
       const weightPatterns = [
-        /(?:Item|Product|Shipping|Package)\s*Weight[:\s]*(\d+\.?\d*)\s*(pounds?|lbs?|lb)\b/i,
-        /(?:Weight)[:\s]*(\d+\.?\d*)\s*(pounds?|lbs?|lb)\b/i,
+        /(?:Item|Product|Shipping|Package)\s*Weight[:\s\u200e\u200f]*(\d+\.?\d*)\s*(pounds?|lbs?|lb)\b/i,
+        /(?:Item|Product|Shipping|Package)\s*Weight[:\s\u200e\u200f]*(\d+\.?\d*)\s*(ounces?|oz)\b/i,
+        /(?:Item|Product|Shipping|Package)\s*Weight[:\s\u200e\u200f]*(\d+\.?\d*)\s*(kg|kilograms?)\b/i,
+        /(?:Weight)[:\s\u200e\u200f]*(\d+\.?\d*)\s*(pounds?|lbs?|lb)\b/i,
         /(\d+\.?\d*)\s*(pounds?|lbs?|lb)\b/i,
       ];
       for (const pattern of weightPatterns) {
         const match = jinaText.match(pattern);
         if (match) {
           const w = parseFloat(match[1]);
-          if (w > 0 && w < 500) {
-            weightLbs = w;
-            console.log(`✅ Weight from page scrape: ${weightLbs} lbs`);
+          const unit = match[2].toLowerCase();
+          if (w > 0 && w < 5000) {
+            if (unit.startsWith("oz") || unit.startsWith("ounce")) {
+              weightLbs = parseFloat((w / 16).toFixed(2));
+            } else if (unit === "kg" || unit.startsWith("kilogram")) {
+              weightLbs = parseFloat((w * 2.20462).toFixed(2));
+            } else {
+              weightLbs = w;
+            }
+            console.log(`✅ Weight from page scrape: ${weightLbs} lbs (raw: ${w} ${unit})`);
             break;
           }
-        }
-      }
-
-      // Try kg from page
-      if (!weightLbs) {
-        const kgMatch = jinaText.match(
-          /(?:Item|Product|Shipping)?\s*Weight[:\s]*(\d+\.?\d*)\s*(kg|kilograms?)\b/i
-        );
-        if (kgMatch) {
-          weightLbs = parseFloat((parseFloat(kgMatch[1]) * 2.20462).toFixed(2));
-          console.log(`✅ Weight from page (kg→lbs): ${weightLbs} lbs`);
         }
       }
 
