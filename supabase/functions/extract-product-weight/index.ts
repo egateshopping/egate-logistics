@@ -71,6 +71,105 @@ function categorizeProduct(name: string): string {
   return "other";
 }
 
+function toTitleCase(text: string): string {
+  return text
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function normalizeProductName(name: string, url: string): string {
+  const cleanName = (name || "").trim();
+  if (cleanName && !/manual\s*entry\s*required/i.test(cleanName)) {
+    return cleanName;
+  }
+
+  try {
+    const u = new URL(url);
+    const parts = u.pathname.split("/").filter(Boolean);
+    const slug = parts.find(
+      (part) =>
+        part.includes("-") &&
+        !/^dp$/i.test(part) &&
+        !/^gp$/i.test(part) &&
+        !/^product$/i.test(part) &&
+        !/^[A-Z0-9]{10}$/i.test(part),
+    );
+
+    if (slug) {
+      return toTitleCase(decodeURIComponent(slug).replace(/-/g, " "));
+    }
+  } catch {
+    // ignore URL parse errors
+  }
+
+  return cleanName || "Product";
+}
+
+function buildJinaCandidateUrls(rawUrl: string): string[] {
+  const candidates = new Set<string>([rawUrl]);
+
+  try {
+    const parsed = new URL(rawUrl);
+    parsed.hash = "";
+
+    // stripped query version
+    const stripped = new URL(parsed.toString());
+    stripped.search = "";
+    candidates.add(stripped.toString());
+
+    if (parsed.hostname.includes("amazon.")) {
+      const asin =
+        parsed.pathname.match(/\/dp\/([A-Z0-9]{10})/i)?.[1] ||
+        parsed.pathname.match(/\/gp\/product\/([A-Z0-9]{10})/i)?.[1];
+
+      if (asin) {
+        candidates.add(`https://www.amazon.com/dp/${asin}`);
+        candidates.add(`https://www.amazon.com/dp/${asin}/`);
+      }
+    }
+  } catch {
+    // keep raw URL only
+  }
+
+  return [...candidates];
+}
+
+async function fetchBestJinaText(url: string): Promise<{ text: string; sourceUrl: string }> {
+  const candidates = buildJinaCandidateUrls(url);
+  let bestText = "";
+  let bestSource = url;
+  let bestScore = -1;
+
+  for (const candidate of candidates) {
+    try {
+      const jinaUrl = `https://r.jina.ai/${candidate}`;
+      const res = await fetch(jinaUrl, {
+        headers: { "X-No-Cache": "true" },
+        signal: AbortSignal.timeout(15000),
+      });
+
+      const text = await res.text();
+      const hasWeight = /(?:Item|Shipping|Package|Product)\s*Weight/i.test(text);
+      const hasPrice = /\$[0-9]/.test(text);
+      const score = text.length + (hasWeight ? 100000 : 0) + (hasPrice ? 50000 : 0);
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestText = text;
+        bestSource = candidate;
+      }
+
+      if (text.length > 50000 && hasWeight) break;
+    } catch (e) {
+      console.warn("⚠️ Jina fetch attempt failed:", { candidate, error: e });
+    }
+  }
+
+  return { text: bestText, sourceUrl: bestSource };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -78,34 +177,30 @@ serve(async (req) => {
 
   try {
     const { url, productName } = await req.json();
-    console.log("📦 extract-product-weight called:", { url, productName });
+    const normalizedProductName = normalizeProductName(productName || "", url || "");
+
+    console.log("📦 extract-product-weight called:", {
+      url,
+      productName,
+      normalizedProductName,
+    });
 
     let weightLbs: number | null = null;
     let price: number | null = null;
     let lengthInch = 0;
     let widthInch = 0;
     let heightInch = 0;
-    let category = categorizeProduct(productName || "");
+    let category = categorizeProduct(normalizedProductName);
 
     // ── Step 1: Try regex extraction from product name ──
-    weightLbs = extractWeightFromName(productName || "");
+    weightLbs = extractWeightFromName(normalizedProductName);
     if (weightLbs) {
       console.log(`✅ Weight extracted from product name: ${weightLbs} lbs`);
     }
 
     // ── Step 2: Scrape product page via Jina AI for more details ──
-    let jinaText = "";
-    try {
-      const jinaUrl = `https://r.jina.ai/${url}`;
-      const res = await fetch(jinaUrl, {
-        headers: { "X-No-Cache": "true" },
-        signal: AbortSignal.timeout(15000),
-      });
-      jinaText = await res.text();
-      console.log(`✅ Jina returned ${jinaText.length} chars`);
-    } catch (e) {
-      console.warn("⚠️ Jina fetch failed:", e);
-    }
+    const { text: jinaText, sourceUrl } = await fetchBestJinaText(url);
+    console.log(`✅ Jina returned ${jinaText.length} chars from: ${sourceUrl}`);
 
     // ── Step 3: Extract price from page if available ──
     if (jinaText) {
