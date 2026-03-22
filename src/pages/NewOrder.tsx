@@ -151,7 +151,12 @@ export default function NewOrder() {
         width = aiData.widthInch || 0;
         height = aiData.heightInch || 0;
         category = aiData.category || "other";
-        if (aiData.price > 0) productPrice = aiData.price;
+        // Prefer metaPrice (from fetch-metadata) if available, otherwise use aiData price
+        if (metaPrice > 0) {
+          productPrice = metaPrice;
+        } else if (aiData.price > 0) {
+          productPrice = aiData.price;
+        }
         source = "scraped";
         toast.success(`✅ تم استخراج الوزن: ${weight} lbs`);
       } else if (cached && (cached as any).actual_weight_lbs) {
@@ -162,7 +167,7 @@ export default function NewOrder() {
         width = c.width || 0;
         height = c.height || 0;
         category = c.category || "other";
-        productPrice = aiData?.price || productPrice;
+        productPrice = metaPrice > 0 ? metaPrice : (aiData?.price || productPrice);
         source = "cache";
         toast.success("⚡ الوزن من الذاكرة");
       } else {
@@ -185,7 +190,7 @@ export default function NewOrder() {
           width = 10;
           height = 6;
         }
-        productPrice = aiData?.price || productPrice;
+        productPrice = metaPrice > 0 ? metaPrice : (aiData?.price || productPrice);
         source = "category_default";
         toast.info("📦 تم احتساب السعر حسب الفئة الافتراضية");
       }
