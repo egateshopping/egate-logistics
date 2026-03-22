@@ -76,6 +76,7 @@ export default function NewOrder() {
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoDiscount, setPromoDiscount] = useState(0);
   const [pricing, setPricing] = useState<PriceBreakdown | null>(null);
+  const [metaPrice, setMetaPrice] = useState<number>(0);
 
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastFetchedUrl = useRef<string>("");
@@ -92,12 +93,15 @@ export default function NewOrder() {
     lastFetchedUrl.current = url;
     try {
       const { data, error } = await supabase.functions.invoke("fetch-metadata", { body: { url } });
-      if (!error && (data?.image || data?.title)) {
+      if (!error && (data?.image || data?.title || data?.price)) {
         setFormData((prev) => ({
           ...prev,
           product_image: data.image || prev.product_image,
           product_title: data.title && !prev.product_title ? data.title : prev.product_title,
         }));
+        if (data?.price) {
+          setMetaPrice(parseFloat(data.price) || 0);
+        }
         setMetaFetched(true);
       }
     } catch (err) {
@@ -116,65 +120,73 @@ export default function NewOrder() {
     try {
       const { data: cached } = await supabase.from("product_cache").select("*").eq("url", url).single();
 
-      let weight: number;
-      let length: number;
-      let width: number;
-      let height: number;
-      let category: string;
-      let source: "cache" | "scraped" | "category_default";
-      let productPrice: number = 0;
+      let weight: number = 0;
+      let length: number = 0;
+      let width: number = 0;
+      let height: number = 0;
+      let category: string = "other";
+      let source: "cache" | "scraped" | "category_default" = "category_default";
+      let productPrice: number = metaPrice; // fallback to price from fetch-metadata
 
-      if (cached && (cached as any).actual_weight_lbs) {
-        // الوزن من الذاكرة — السعر يُجلب دائماً من Amazon
+      // Try extract-product-weight (may fail)
+      let aiData: any = null;
+      try {
+        const { data } = await supabase.functions.invoke("extract-product-weight", {
+          body: { url, productName },
+        });
+        aiData = data;
+      } catch (err) {
+        console.warn("extract-product-weight failed, using fallbacks:", err);
+      }
+
+      if (aiData?.weightLbs) {
+        // API returned weight data
+        weight = aiData.weightLbs;
+        length = aiData.lengthInch || 0;
+        width = aiData.widthInch || 0;
+        height = aiData.heightInch || 0;
+        category = aiData.category || "other";
+        productPrice = aiData.price || productPrice;
+        source = "scraped";
+        toast.success("✅ تم استخراج البيانات من المتجر");
+      } else if (cached && (cached as any).actual_weight_lbs) {
+        // Use cached weight
         const c = cached as any;
         weight = c.actual_weight_lbs;
         length = c.length || 0;
         width = c.width || 0;
         height = c.height || 0;
         category = c.category || "other";
+        productPrice = aiData?.price || productPrice;
         source = "cache";
-
-        const { data: freshData } = await supabase.functions.invoke("extract-product-weight", {
-          body: { url, productName },
-        });
-        productPrice = freshData?.price || 0;
-        toast.success("⚡ الوزن من الذاكرة — السعر محدّث من Amazon");
+        toast.success("⚡ الوزن من الذاكرة");
       } else {
-        // استخراج كل شيء من Scrapingdog
-        const { data: aiData } = await supabase.functions.invoke("extract-product-weight", {
-          body: { url, productName },
-        });
+        // Fallback to category defaults
+        const { data: categoryData } = await supabase
+          .from("category_defaults" as any)
+          .select("*")
+          .eq("category_name", category)
+          .single();
 
-        weight = aiData?.weightLbs;
-        length = aiData?.lengthInch;
-        width = aiData?.widthInch;
-        height = aiData?.heightInch;
-        category = aiData?.category || "other";
-        productPrice = aiData?.price || 0;
-        source = "scraped";
-
-        if (!weight) {
-          const { data: categoryData } = await supabase
-            .from("category_defaults" as any)
-            .select("*")
-            .eq("category_name", category)
-            .single();
-
-          if (categoryData) {
-            const cd = categoryData as any;
-            weight = cd.default_weight_lbs;
-            length = cd.default_length;
-            width = cd.default_width;
-            height = cd.default_height;
-          } else {
-            weight = 2.0;
-            length = 12;
-            width = 10;
-            height = 6;
-          }
-          source = "category_default";
+        if (categoryData) {
+          const cd = categoryData as any;
+          weight = cd.default_weight_lbs || 2.0;
+          length = cd.default_length || 12;
+          width = cd.default_width || 10;
+          height = cd.default_height || 6;
+        } else {
+          weight = 2.0;
+          length = 12;
+          width = 10;
+          height = 6;
         }
+        productPrice = aiData?.price || productPrice;
+        source = "category_default";
+        toast.info("📦 تم احتساب السعر حسب الفئة الافتراضية");
+      }
 
+      // Cache the result
+      if (source !== "cache") {
         await supabase
           .from("product_cache")
           .upsert(
@@ -190,8 +202,6 @@ export default function NewOrder() {
             } as any,
             { onConflict: "url" },
           );
-
-        toast.success(source === "scraped" ? "✅ تم استخراج البيانات من Amazon" : "✅ تم احتساب السعر حسب الفئة");
       }
 
       // ── المعادلة الصحيحة ──────────────────────────────────
