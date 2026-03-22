@@ -97,7 +97,7 @@ export default function NewOrder() {
         setFormData((prev) => ({
           ...prev,
           product_image: data.image || prev.product_image,
-          product_title: data.title && !prev.product_title ? data.title : prev.product_title,
+          product_title: data.title || prev.product_title,
         }));
         if (data?.price) {
           setMetaPrice(parseFloat(data.price) || 0);
