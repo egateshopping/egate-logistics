@@ -1,17 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import {
-  Package,
-  Loader2,
-  ArrowLeft,
-  Tag,
-  Plus,
-  Minus,
-  ExternalLink,
-  ImageIcon,
-  Scale,
-  Calculator,
-} from "lucide-react";
+import { Package, Loader2, ArrowLeft, Tag, Plus, Minus, ExternalLink, ImageIcon, Info } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,36 +10,22 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
-// ── المعادلة الصحيحة ──────────────────────────────────────
-const SHIPPING_RATE_PER_LB = 10; // $10 لكل باوند
-const MIN_SHIPPING_COST = 8; // $8 إذا كان الوزن أقل من 0.5 lbs
-const MIN_WEIGHT_THRESHOLD = 0.5; // حد الوزن الأدنى
-const CUSTOMS_RATE = 0.1; // 10% من سعر المنتج فقط
-const SERVICE_FEE = 2; // $2 ثابتة
-const USD_TO_AED = 3.67;
-
-function calcVolumetric(l: number, w: number, h: number) {
-  return parseFloat(((l * w * h) / 139).toFixed(2));
-}
-
-function calcShippingCost(chargeableWeight: number): number {
-  if (chargeableWeight < MIN_WEIGHT_THRESHOLD) return MIN_SHIPPING_COST;
-  return parseFloat((chargeableWeight * SHIPPING_RATE_PER_LB).toFixed(2));
-}
-
-interface PriceBreakdown {
-  productPrice: number;
-  actualWeight: number;
-  volumetricWeight: number;
-  chargeableWeight: number;
-  shippingCost: number;
-  customsDuty: number;
-  serviceFee: number;
-  totalUSD: number;
-  totalAED: number;
-  source: "cache" | "scraped" | "category_default";
-  category: string;
-}
+// ── فئات المنتجات والأوزان التقديرية ──────────────────────
+const CATEGORIES = [
+  { value: "shoes", label: "👟 Shoes / Boots", weight: 2.5 },
+  { value: "clothing", label: "👕 Clothing / Apparel", weight: 1.0 },
+  { value: "electronics", label: "📱 Electronics", weight: 3.0 },
+  { value: "supplements", label: "💪 Supplements / Vitamins", weight: 2.0 },
+  { value: "cosmetics", label: "💄 Cosmetics / Beauty", weight: 1.0 },
+  { value: "fragrance", label: "🌸 Fragrance / Perfume", weight: 1.5 },
+  { value: "bags", label: "👜 Bags / Accessories", weight: 2.0 },
+  { value: "watches", label: "⌚ Watches / Jewelry", weight: 1.0 },
+  { value: "sports", label: "🏋️ Sports / Fitness", weight: 3.0 },
+  { value: "baby_clothing", label: "👶 Baby & Kids", weight: 0.5 },
+  { value: "car_parts", label: "🚗 Car Parts", weight: 5.0 },
+  { value: "home", label: "🏠 Home & Kitchen", weight: 4.0 },
+  { value: "other", label: "📦 Other", weight: 2.0 },
+];
 
 export default function NewOrder() {
   const navigate = useNavigate();
@@ -62,6 +37,7 @@ export default function NewOrder() {
     product_url: initialUrl,
     product_title: "",
     product_image: "",
+    category: "",
     color: "",
     size: "",
     quantity: 1,
@@ -71,17 +47,14 @@ export default function NewOrder() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
-  const [isCalculating, setIsCalculating] = useState(false);
   const [metaFetched, setMetaFetched] = useState(false);
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoDiscount, setPromoDiscount] = useState(0);
-  const [pricing, setPricing] = useState<PriceBreakdown | null>(null);
-  const [metaPrice, setMetaPrice] = useState<number>(0);
 
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastFetchedUrl = useRef<string>("");
 
-  // ── 1. جلب صورة وعنوان المنتج ────────────────────────────
+  // ── جلب صورة وعنوان المنتج فقط ────────────────────────────
   const fetchMetadata = async (url: string) => {
     if (!url || url === lastFetchedUrl.current) return;
     try {
@@ -93,15 +66,12 @@ export default function NewOrder() {
     lastFetchedUrl.current = url;
     try {
       const { data, error } = await supabase.functions.invoke("fetch-metadata", { body: { url } });
-      if (!error && (data?.image || data?.title || data?.price)) {
+      if (!error && (data?.image || data?.title)) {
         setFormData((prev) => ({
           ...prev,
           product_image: data.image || prev.product_image,
           product_title: data.title || prev.product_title,
         }));
-        if (data?.price) {
-          setMetaPrice(parseFloat(data.price) || 0);
-        }
         setMetaFetched(true);
       }
     } catch (err) {
@@ -111,141 +81,9 @@ export default function NewOrder() {
     }
   };
 
-  // ── 2. حساب السعر الكامل ──────────────────────────────────
-  const calculatePricing = async (url: string, productName: string) => {
-    if (!url) return;
-    setIsCalculating(true);
-    setPricing(null);
-
-    try {
-      const { data: cached } = await supabase.from("product_cache").select("*").eq("url", url).single();
-
-      let weight: number = 0;
-      let length: number = 0;
-      let width: number = 0;
-      let height: number = 0;
-      let category: string = "other";
-      let source: "cache" | "scraped" | "category_default" = "category_default";
-      let productPrice: number = metaPrice; // fallback to price from fetch-metadata
-
-      // Try extract-product-weight (may fail)
-      let aiData: any = null;
-      try {
-        const { data, error } = await supabase.functions.invoke("extract-product-weight", {
-          body: { url, productName },
-        });
-        if (!error && data) {
-          aiData = data;
-          console.log("extract-product-weight response:", JSON.stringify(aiData));
-        } else {
-          console.warn("extract-product-weight error:", error);
-        }
-      } catch (err) {
-        console.warn("extract-product-weight failed, using fallbacks:", err);
-      }
-
-      if (aiData?.weightLbs > 0) {
-        // API returned weight data
-        weight = aiData.weightLbs;
-        length = aiData.lengthInch || 0;
-        width = aiData.widthInch || 0;
-        height = aiData.heightInch || 0;
-        category = aiData.category || "other";
-        // Prefer metaPrice (from fetch-metadata) if available, otherwise use aiData price
-        if (metaPrice > 0) {
-          productPrice = metaPrice;
-        } else if (aiData.price > 0) {
-          productPrice = aiData.price;
-        }
-        source = "scraped";
-        toast.success(`✅ تم استخراج الوزن: ${weight} lbs`);
-      } else if (cached && (cached as any).actual_weight_lbs) {
-        // Use cached weight
-        const c = cached as any;
-        weight = c.actual_weight_lbs;
-        length = c.length || 0;
-        width = c.width || 0;
-        height = c.height || 0;
-        category = c.category || "other";
-        productPrice = metaPrice > 0 ? metaPrice : (aiData?.price || productPrice);
-        source = "cache";
-        toast.success("⚡ الوزن من الذاكرة");
-      } else {
-        // Fallback to category defaults
-        const { data: categoryData } = await supabase
-          .from("category_defaults" as any)
-          .select("*")
-          .eq("category_name", category)
-          .single();
-
-        if (categoryData) {
-          const cd = categoryData as any;
-          weight = cd.default_weight_lbs || 2.0;
-          length = cd.default_length || 12;
-          width = cd.default_width || 10;
-          height = cd.default_height || 6;
-        } else {
-          weight = 2.0;
-          length = 12;
-          width = 10;
-          height = 6;
-        }
-        productPrice = metaPrice > 0 ? metaPrice : (aiData?.price || productPrice);
-        source = "category_default";
-        toast.info("📦 تم احتساب السعر حسب الفئة الافتراضية");
-      }
-
-      // Cache the result
-      if (source !== "cache") {
-        await supabase
-          .from("product_cache")
-          .upsert(
-            {
-              url,
-              product_name: productName || aiData?.productName,
-              category,
-              actual_weight_lbs: weight,
-              length: length || null,
-              width: width || null,
-              height: height || null,
-              source,
-            } as any,
-            { onConflict: "url" },
-          );
-      }
-
-      // ── المعادلة الصحيحة ──────────────────────────────────
-      const vol = calcVolumetric(length || 0, width || 0, height || 0);
-      const chargeable = Math.max(weight, vol);
-      const shipping = calcShippingCost(chargeable);
-      const duty = parseFloat((productPrice * CUSTOMS_RATE).toFixed(2));
-      const totalUSD = parseFloat((productPrice + shipping + duty + SERVICE_FEE).toFixed(2));
-
-      setPricing({
-        productPrice,
-        actualWeight: weight,
-        volumetricWeight: vol,
-        chargeableWeight: chargeable,
-        shippingCost: shipping,
-        customsDuty: duty,
-        serviceFee: SERVICE_FEE,
-        totalUSD,
-        totalAED: parseFloat((totalUSD * USD_TO_AED).toFixed(2)),
-        source,
-        category,
-      });
-    } catch (err) {
-      console.error("Pricing calculation failed:", err);
-      toast.error("تعذّر حساب السعر، يرجى المحاولة مرة أخرى");
-    } finally {
-      setIsCalculating(false);
-    }
-  };
-
   const handleUrlChange = (value: string) => {
     setFormData({ ...formData, product_url: value });
     setMetaFetched(false);
-    setPricing(null);
     if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
     if (value.length > 10) {
       fetchTimeoutRef.current = setTimeout(() => fetchMetadata(value), 800);
@@ -291,6 +129,8 @@ export default function NewOrder() {
     }
     setIsSubmitting(true);
 
+    const selectedCategory = CATEGORIES.find((c) => c.value === formData.category);
+
     const { error } = await supabase.from("orders").insert({
       user_id: user?.id,
       product_url: formData.product_url,
@@ -299,13 +139,9 @@ export default function NewOrder() {
       color: formData.color || null,
       size: formData.size || null,
       quantity: formData.quantity,
-      special_notes: formData.special_notes || null,
-      weight_lbs: pricing?.actualWeight || null,
-      volumetric_weight: pricing?.volumetricWeight || null,
-      chargeable_weight: pricing?.chargeableWeight || null,
-      international_shipping: pricing?.shippingCost || null,
-      base_item_cost: pricing?.productPrice || null,
-      customs: pricing?.customsDuty || null,
+      special_notes: formData.special_notes
+        ? `[Category: ${selectedCategory?.label || formData.category}] ${formData.special_notes}`
+        : `[Category: ${selectedCategory?.label || "Not specified"}]`,
       discount: promoDiscount,
       status: "pending_payment",
     });
@@ -315,15 +151,11 @@ export default function NewOrder() {
       toast.error("Failed to create order");
       return;
     }
-    toast.success("Order submitted successfully!");
+    toast.success("✅ Order submitted! We'll contact you with the final price.");
     navigate("/dashboard");
   };
 
-  const sourceLabel = {
-    cache: "⚡ وزن من الذاكرة — سعر محدّث",
-    scraped: "🔍 مستخرج من Amazon",
-    category_default: "📦 مبني على متوسط الفئة",
-  };
+  const selectedCat = CATEGORIES.find((c) => c.value === formData.category);
 
   return (
     <Layout>
@@ -340,6 +172,7 @@ export default function NewOrder() {
 
         <div className="p-6 rounded-2xl bg-card border border-border">
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Product URL */}
             <div className="space-y-2">
               <Label htmlFor="product_url">Product URL *</Label>
               <div className="relative">
@@ -361,6 +194,7 @@ export default function NewOrder() {
               </div>
             </div>
 
+            {/* Product Preview */}
             {(formData.product_image || formData.product_title || isFetchingMeta) && (
               <div className="rounded-xl border border-border bg-muted/30 overflow-hidden">
                 {isFetchingMeta ? (
@@ -404,100 +238,54 @@ export default function NewOrder() {
               </div>
             )}
 
-            {metaFetched && !pricing && (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => calculatePricing(formData.product_url, formData.product_title)}
-                disabled={isCalculating}
-              >
-                {isCalculating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    جاري احتساب السعر من Amazon...
-                  </>
-                ) : (
-                  <>
-                    <Calculator className="h-4 w-4 mr-2" />
-                    احتسب السعر الكامل تلقائياً
-                  </>
-                )}
-              </Button>
-            )}
-
-            {pricing && (
-              <div className="rounded-xl border border-primary/30 bg-primary/5 overflow-hidden">
-                <div className="p-4 border-b border-primary/20">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Scale className="h-4 w-4 text-primary" />
-                      <span className="font-semibold text-sm">تفصيل السعر الكامل</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">{sourceLabel[pricing.source]}</span>
-                  </div>
-                </div>
-                <div className="p-4 space-y-2">
-                  <div className="grid grid-cols-3 gap-2 mb-3">
-                    {[
-                      ["الوزن الفعلي", `${pricing.actualWeight} lbs`],
-                      ["الوزن الحجمي", `${pricing.volumetricWeight} lbs`],
-                      ["⚡ الوزن المحاسب", `${pricing.chargeableWeight} lbs`],
-                    ].map(([label, value]) => (
-                      <div key={label} className="bg-background rounded-lg p-2 text-center">
-                        <p className="text-xs text-muted-foreground">{label}</p>
-                        <p className="font-bold text-sm mt-1">{value}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {[
-                    ["🛒 سعر المنتج (Amazon)", pricing.productPrice > 0 ? `$${pricing.productPrice}` : "غير متاح"],
-                    [
-                      `✈️ الشحن (${pricing.chargeableWeight < MIN_WEIGHT_THRESHOLD ? "$8 حد أدنى" : `${pricing.chargeableWeight} lbs × $10`})`,
-                      `$${pricing.shippingCost}`,
-                    ],
-                    ["🏛️ الجمارك (10% من سعر المنتج)", `$${pricing.customsDuty}`],
-                    ["⚙️ رسوم الخدمة", `$${pricing.serviceFee}`],
-                  ].map(([label, value]) => (
-                    <div
-                      key={label}
-                      className="flex justify-between text-sm py-1.5 border-b border-primary/10 last:border-0"
-                    >
-                      <span className="text-muted-foreground">{label}</span>
-                      <span className="font-medium">{value}</span>
-                    </div>
-                  ))}
-
-                  <div className="border-t border-primary/20 pt-3 mt-2">
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold">الإجمالي النهائي</span>
-                      <div className="text-right">
-                        <p className="font-bold text-lg text-primary">${pricing.totalUSD}</p>
-                        <p className="text-xs text-muted-foreground">AED {pricing.totalAED}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {pricing.productPrice === 0 && (
-                    <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 mt-2">
-                      <p className="text-xs text-warning">⚠️ لم يتم استخراج سعر المنتج — الإجمالي لا يشمل سعر المنتج</p>
-                    </div>
-                  )}
-                </div>
+            {/* إشعار للعميل */}
+            <div className="flex items-start gap-3 p-4 bg-primary/5 border border-primary/20 rounded-xl">
+              <Info className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-primary">How it works</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Submit your order and our team will contact you with the final price within 24 hours. Price includes
+                  shipping + customs (10%) + $2 service fee.
+                </p>
               </div>
-            )}
+            </div>
 
+            {/* فئة المنتج */}
             <div className="space-y-2">
-              <Label htmlFor="product_title">Product Name (optional)</Label>
+              <Label htmlFor="category">Product Category *</Label>
+              <select
+                id="category"
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                required
+                className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">Select category...</option>
+                {CATEGORIES.map((cat) => (
+                  <option key={cat.value} value={cat.value}>
+                    {cat.label}
+                  </option>
+                ))}
+              </select>
+              {selectedCat && (
+                <p className="text-xs text-muted-foreground">
+                  📦 Estimated weight: ~{selectedCat.weight} lbs (final weight confirmed by our team)
+                </p>
+              )}
+            </div>
+
+            {/* Product Title */}
+            <div className="space-y-2">
+              <Label htmlFor="product_title">Product Name</Label>
               <Input
                 id="product_title"
                 value={formData.product_title}
                 onChange={(e) => setFormData({ ...formData, product_title: e.target.value })}
-                placeholder="e.g., Nike Air Max 90"
+                placeholder="e.g., Nike Air Max 90 - Size 10"
               />
             </div>
 
+            {/* Color & Size */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="color">Color</Label>
@@ -514,11 +302,12 @@ export default function NewOrder() {
                   id="size"
                   value={formData.size}
                   onChange={(e) => setFormData({ ...formData, size: e.target.value })}
-                  placeholder="e.g., US 10"
+                  placeholder="e.g., US 10 / XL"
                 />
               </div>
             </div>
 
+            {/* Quantity */}
             <div className="space-y-2">
               <Label>Quantity</Label>
               <div className="flex items-center gap-3">
@@ -542,17 +331,19 @@ export default function NewOrder() {
               </div>
             </div>
 
+            {/* Special Notes */}
             <div className="space-y-2">
               <Label htmlFor="special_notes">Special Notes</Label>
               <Textarea
                 id="special_notes"
                 value={formData.special_notes}
                 onChange={(e) => setFormData({ ...formData, special_notes: e.target.value })}
-                placeholder="Any special requests or instructions..."
+                placeholder="Any special requests, specific variant, or instructions..."
                 rows={3}
               />
             </div>
 
+            {/* Promo Code */}
             <div className="space-y-2">
               <Label htmlFor="promo_code">
                 <Tag className="h-4 w-4 inline mr-1" />
@@ -572,12 +363,13 @@ export default function NewOrder() {
                   onClick={handleApplyPromo}
                   disabled={promoApplied || !formData.promo_code}
                 >
-                  {promoApplied ? "Applied" : "Apply"}
+                  {promoApplied ? "Applied ✓" : "Apply"}
                 </Button>
               </div>
               {promoApplied && <p className="text-sm text-success">✓ Discount will be applied</p>}
             </div>
 
+            {/* Submit */}
             <Button type="submit" disabled={isSubmitting} className="w-full gradient-hero border-0" size="lg">
               {isSubmitting ? (
                 <>
@@ -593,7 +385,7 @@ export default function NewOrder() {
             </Button>
 
             <p className="text-center text-xs text-muted-foreground">
-              السعر يشمل المنتج + الشحن + الجمارك + رسوم الخدمة
+              Our team will review your order and send you the final price within 24 hours.
             </p>
           </form>
         </div>
