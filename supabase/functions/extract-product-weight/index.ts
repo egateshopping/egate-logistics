@@ -1,334 +1,234 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
-const corsHeaders = {
+const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// ── Regex-based weight extraction from product name ──
-function extractWeightFromName(name: string): number | null {
-  if (!name) return null;
-  // Match patterns like "20 lbs", "5.5 pounds", "10lb", "2.0 lb"
-  const match = name.match(/(\d+\.?\d*)\s*(pounds?|lbs?|lb)\b/i);
-  if (match) {
-    const lbs = parseFloat(match[1]);
-    if (lbs > 0 && lbs < 500) return lbs;
-  }
-  // Also try kg and convert
-  const kgMatch = name.match(/(\d+\.?\d*)\s*(kg|kilograms?)\b/i);
-  if (kgMatch) {
-    const kg = parseFloat(kgMatch[1]);
-    if (kg > 0 && kg < 250) return parseFloat((kg * 2.20462).toFixed(2));
-  }
-  // Try ounces
-  const ozMatch = name.match(/(\d+\.?\d*)\s*(oz|ounces?)\b/i);
-  if (ozMatch) {
-    const oz = parseFloat(ozMatch[1]);
-    if (oz > 0 && oz < 5000) return parseFloat((oz / 16).toFixed(2));
-  }
+const CATEGORY_WEIGHTS: Record<string, { weight: number; l: number; w: number; h: number }> = {
+  shoes: { weight: 2.5, l: 13, w: 8, h: 6 },
+  clothing: { weight: 1.0, l: 12, w: 10, h: 3 },
+  electronics: { weight: 3.0, l: 14, w: 10, h: 6 },
+  supplements: { weight: 2.0, l: 8, w: 8, h: 8 },
+  beauty: { weight: 1.0, l: 8, w: 6, h: 4 },
+  bags: { weight: 2.0, l: 14, w: 10, h: 5 },
+  jewelry: { weight: 0.5, l: 6, w: 4, h: 2 },
+  sports: { weight: 3.0, l: 14, w: 10, h: 6 },
+  home: { weight: 4.0, l: 16, w: 12, h: 8 },
+  watches: { weight: 1.0, l: 8, w: 6, h: 4 },
+  sunglasses: { weight: 0.5, l: 7, w: 5, h: 3 },
+  accessories: { weight: 0.5, l: 8, w: 6, h: 3 },
+  cosmetics: { weight: 1.0, l: 8, w: 6, h: 4 },
+  fragrance: { weight: 1.5, l: 8, w: 6, h: 4 },
+  baby_clothing: { weight: 0.5, l: 10, w: 8, h: 3 },
+  car_parts: { weight: 5.0, l: 16, w: 12, h: 8 },
+  other: { weight: 2.0, l: 12, w: 10, h: 6 },
+};
+
+function detectCategoryFromUrl(url: string): string | null {
+  const u = url.toLowerCase();
+  if (u.includes("apple.com") || u.includes("bestbuy.com") || u.includes("newegg.com") ||
+      u.includes("bhphotovideo.com") || u.includes("store.google.com")) return "electronics";
+  if (u.includes("nike.com") || u.includes("adidas.com") || u.includes("puma.com") ||
+      u.includes("reebok.com") || u.includes("underarmour.com") || u.includes("skechers.com")) return "sports";
+  if (u.includes("sephora.com") || u.includes("hudabeauty.com") || u.includes("maccosmetics.com") ||
+      u.includes("nyxcosmetics.com") || u.includes("morphe.com")) return "cosmetics";
+  if (u.includes("fragrancenet.com")) return "fragrance";
+  if (u.includes("bodybuilding.com") || u.includes("muscleandstrength.com") || u.includes("iherb.com")) return "supplements";
+  if (u.includes("jomashop.com")) return "watches";
+  if (u.includes("ray-ban.com")) return "sunglasses";
+  if (u.includes("swarovski.com")) return "jewelry";
+  if (u.includes("aldoshoes.com") || u.includes("6pm.com") || u.includes("zappos.com") ||
+      u.includes("charleskeith.com")) return "shoes";
+  if (u.includes("carters.com") || u.includes("gerberchildrenswear.com") || u.includes("oshkosh.com")) return "baby_clothing";
+  if (u.includes("quirkparts.com") || u.includes("gmpartsdirect.com") || u.includes("parts.toyota.com") ||
+      u.includes("toyotapartsdeal.com") || u.includes("knfilters.com") || u.includes("ngksparkplugs.com")) return "car_parts";
+  if (u.includes("zara.com") || u.includes("mango.com") || u.includes("asos.com") ||
+      u.includes("hm.com") || u.includes("gap.com") || u.includes("levi.com") ||
+      u.includes("victoriassecret.com") || u.includes("abercrombie.com") ||
+      u.includes("nordstrom.com") || u.includes("macys.com") || u.includes("lacoste.com") ||
+      u.includes("ralphlauren.com") || u.includes("hugoboss.com") || u.includes("tommy.com") ||
+      u.includes("calvinklein.us") || u.includes("uspoloassn.com")) return "clothing";
   return null;
 }
 
-// ── Extract price from text ──
-function extractPrice(text: string): number | null {
-  const match = text.match(/\$([0-9,]+(?:\.[0-9]{2})?)/);
-  if (match) return parseFloat(match[1].replace(/,/g, ""));
-  return null;
-}
-
-// ── Extract dimensions from text (L x W x H) ──
-function extractDimensions(text: string): {
-  lengthInch: number;
-  widthInch: number;
-  heightInch: number;
-} | null {
-  // Match patterns like "12 x 10 x 6 inches" or "12x10x6 in"
-  const match = text.match(
-    /(\d+\.?\d*)\s*x\s*(\d+\.?\d*)\s*x\s*(\d+\.?\d*)\s*(inches|inch|in|")/i
-  );
-  if (match) {
-    return {
-      lengthInch: parseFloat(match[1]),
-      widthInch: parseFloat(match[2]),
-      heightInch: parseFloat(match[3]),
-    };
-  }
-  return null;
-}
-
-// ── Categorize product ──
-function categorizeProduct(name: string): string {
-  const lower = name.toLowerCase();
-  if (/phone|iphone|samsung|pixel|galaxy/.test(lower)) return "electronics";
-  if (/laptop|macbook|notebook|chromebook/.test(lower)) return "electronics";
-  if (/shirt|dress|pants|jeans|jacket|hoodie|sweater/.test(lower)) return "clothing";
-  if (/shoe|sneaker|boot|sandal|nike|adidas/.test(lower)) return "shoes";
-  if (/vitamin|supplement|protein|whey|creatine/.test(lower)) return "supplements";
-  if (/toy|lego|game|puzzle/.test(lower)) return "toys";
-  if (/book|textbook|novel/.test(lower)) return "books";
-  if (/cream|serum|lotion|perfume|cologne|makeup/.test(lower)) return "beauty";
+function detectCategoryFromText(text: string): string {
+  const t = text.toLowerCase();
+  if (t.match(/shoe|boot|sneaker|sandal|heel/)) return "shoes";
+  if (t.match(/shirt|pants|dress|jacket|coat|jeans|cloth|hoodie|sweater/)) return "clothing";
+  if (t.match(/phone|laptop|tablet|camera|tv|monitor|electronic|iphone|ipad|macbook/)) return "electronics";
+  if (t.match(/vitamin|supplement|protein|whey|creatine|capsule|powder|nutrition|muscle/)) return "supplements";
+  if (t.match(/makeup|cream|serum|perfume|beauty|skin|lipstick|foundation/)) return "cosmetics";
+  if (t.match(/fragrance|cologne|parfum|eau de/)) return "fragrance";
+  if (t.match(/bag|purse|wallet|backpack|handbag/)) return "bags";
+  if (t.match(/watch|timepiece|rolex|omega/)) return "watches";
+  if (t.match(/sunglasses|eyewear|glasses/)) return "sunglasses";
+  if (t.match(/ring|necklace|bracelet|earring|jewelry|crystal/)) return "jewelry";
+  if (t.match(/sport|gym|fitness|yoga|running|workout/)) return "sports";
+  if (t.match(/home|kitchen|furniture|decor/)) return "home";
+  if (t.match(/baby|infant|toddler|kids|children/)) return "baby_clothing";
+  if (t.match(/car|auto|vehicle|spare|parts|filter|spark plug/)) return "car_parts";
   return "other";
 }
 
-function toTitleCase(text: string): string {
-  return text
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(" ");
+function extractAsin(url: string): string | null {
+  const match = url.match(/\/dp\/([A-Z0-9]{10})/i) || url.match(/\/gp\/product\/([A-Z0-9]{10})/i);
+  return match ? match[1] : null;
 }
 
-function normalizeProductName(name: string, url: string): string {
-  const cleanName = (name || "").trim();
-  if (cleanName && !/manual\s*entry\s*required/i.test(cleanName)) {
-    return cleanName;
-  }
+function isAmazon(url: string): boolean { return url.includes("amazon.com"); }
+function isEbay(url: string): boolean { return url.includes("ebay.com"); }
 
-  try {
-    const u = new URL(url);
-    const parts = u.pathname.split("/").filter(Boolean);
-    const slug = parts.find(
-      (part) =>
-        part.includes("-") &&
-        !/^dp$/i.test(part) &&
-        !/^gp$/i.test(part) &&
-        !/^product$/i.test(part) &&
-        !/^[A-Z0-9]{10}$/i.test(part),
-    );
-
-    if (slug) {
-      return toTitleCase(decodeURIComponent(slug).replace(/-/g, " "));
-    }
-  } catch {
-    // ignore URL parse errors
-  }
-
-  return cleanName || "Product";
+function parsePrice(raw: any): number | null {
+  if (!raw) return null;
+  const str = String(raw).replace(/[^0-9.]/g, "");
+  const num = parseFloat(str);
+  return isNaN(num) ? null : num;
 }
 
-function buildJinaCandidateUrls(rawUrl: string): string[] {
-  const candidates = new Set<string>([rawUrl]);
-
-  try {
-    const parsed = new URL(rawUrl);
-    parsed.hash = "";
-
-    // stripped query version
-    const stripped = new URL(parsed.toString());
-    stripped.search = "";
-    candidates.add(stripped.toString());
-
-    if (parsed.hostname.includes("amazon.")) {
-      const asin =
-        parsed.pathname.match(/\/dp\/([A-Z0-9]{10})/i)?.[1] ||
-        parsed.pathname.match(/\/gp\/product\/([A-Z0-9]{10})/i)?.[1];
-
-      if (asin) {
-        candidates.add(`https://www.amazon.com/dp/${asin}`);
-        candidates.add(`https://www.amazon.com/dp/${asin}/`);
-      }
-    }
-  } catch {
-    // keep raw URL only
-  }
-
-  return [...candidates];
-}
-
-async function fetchBestJinaText(url: string): Promise<{ text: string; sourceUrl: string }> {
-  const candidates = buildJinaCandidateUrls(url);
-  let bestText = "";
-  let bestSource = url;
-  let bestScore = -1;
-
-  for (const candidate of candidates) {
-    try {
-      const jinaUrl = `https://r.jina.ai/${candidate}`;
-      const res = await fetch(jinaUrl, {
-        headers: { "X-No-Cache": "true" },
-        signal: AbortSignal.timeout(15000),
-      });
-
-      const text = await res.text();
-      const hasWeight = /(?:Item|Shipping|Package|Product)\s*Weight/i.test(text);
-      const hasPrice = /\$[0-9]/.test(text);
-      const score = text.length + (hasWeight ? 100000 : 0) + (hasPrice ? 50000 : 0);
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestText = text;
-        bestSource = candidate;
-      }
-
-      if (text.length > 50000 && hasWeight) break;
-    } catch (e) {
-      console.warn("⚠️ Jina fetch attempt failed:", { candidate, error: e });
+function parseWeight(text: string): number | null {
+  const patterns = [
+    /(\d+\.?\d*)\s*(pounds?|lbs?|lb)/i,
+    /(\d+\.?\d*)\s*kg/i,
+    /(\d+\.?\d*)\s*oz(?!\w)/i,
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) {
+      const val = parseFloat(m[1]);
+      const unit = m[2].toLowerCase();
+      if (unit.startsWith("kg")) return parseFloat((val * 2.205).toFixed(2));
+      if (unit.startsWith("oz")) return parseFloat((val / 16).toFixed(2));
+      return val;
     }
   }
-
-  return { text: bestText, sourceUrl: bestSource };
+  return null;
 }
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+function parseDimensions(text: string): { l: number; w: number; h: number } | null {
+  const m = text.match(/(\d+\.?\d*)\s*x\s*(\d+\.?\d*)\s*x\s*(\d+\.?\d*)\s*(inches?|cm)?/i);
+  if (!m) return null;
+  let l = parseFloat(m[1]), w = parseFloat(m[2]), h = parseFloat(m[3]);
+  if (m[4]?.toLowerCase().startsWith("cm")) { l /= 2.54; w /= 2.54; h /= 2.54; }
+  return { l: parseFloat(l.toFixed(1)), w: parseFloat(w.toFixed(1)), h: parseFloat(h.toFixed(1)) };
+}
 
+async function fetchAmazonData(url: string, productName: string, apiKey: string) {
+  const asin = extractAsin(url);
+  if (!asin) throw new Error("Could not extract ASIN from URL");
+  const weightFromName = parseWeight(productName || "");
+  const categoryFromUrl = detectCategoryFromUrl(url);
+  const apiUrl = `https://api.scrapingdog.com/amazon/product?api_key=${apiKey}&domain=com&asin=${asin}&country=us`;
+  const res = await fetch(apiUrl, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "Accept": "application/json",
+    },
+  });
+  console.log("Scrapingdog status:", res.status);
+  const raw = await res.text();
+  console.log("Response preview:", raw.substring(0, 500));
+  const productData = JSON.parse(raw);
+  const title = productData?.title || productName || "";
+  const category = categoryFromUrl || detectCategoryFromText(title + " " + (productName || ""));
+  const defaults = CATEGORY_WEIGHTS[category] || CATEGORY_WEIGHTS["other"];
+  const price = parsePrice(productData?.price) || parsePrice(productData?.final_price) || null;
+  const details = productData?.product_details || {};
+  const allText = JSON.stringify(details) + " " + title + " " + (productName || "");
+  let weight = weightFromName || parseWeight(allText);
+  const dims = parseDimensions(allText);
+  if (!weight) weight = defaults.weight;
+  const finalDims = dims || { l: defaults.l, w: defaults.w, h: defaults.h };
+  return {
+    weightLbs: parseFloat(weight.toFixed(2)),
+    lengthInch: finalDims.l, widthInch: finalDims.w, heightInch: finalDims.h,
+    category, price,
+    confidence: weight !== defaults.weight ? "high" : "low",
+    productName: title || productName || "Unknown",
+  };
+}
+
+async function fetchEbayData(url: string, productName: string) {
+  const microlinkRes = await fetch(`https://api.microlink.io?url=${encodeURIComponent(url)}&meta=true`);
+  const microlinkData = await microlinkRes.json();
+  const title = microlinkData?.data?.title || productName || "";
+  const description = microlinkData?.data?.description || "";
+  const fullText = `${title} ${description} ${productName || ""}`;
+  let price: number | null = null;
+  const priceMatch = fullText.match(/\$\s*(\d+\.?\d*)/);
+  if (priceMatch) price = parseFloat(priceMatch[1]);
+  const category = detectCategoryFromText(fullText);
+  const defaults = CATEGORY_WEIGHTS[category] || CATEGORY_WEIGHTS["other"];
+  let weight = parseWeight(fullText);
+  const dims = parseDimensions(fullText);
+  if (!weight) weight = defaults.weight;
+  const finalDims = dims || { l: defaults.l, w: defaults.w, h: defaults.h };
+  return {
+    weightLbs: parseFloat(weight.toFixed(2)),
+    lengthInch: finalDims.l, widthInch: finalDims.w, heightInch: finalDims.h,
+    category, price,
+    confidence: weight !== defaults.weight ? "high" : "low",
+    productName: title || productName || "Unknown",
+  };
+}
+
+async function fetchGenericData(url: string, productName: string) {
+  const categoryFromUrl = detectCategoryFromUrl(url);
+  const microlinkRes = await fetch(`https://api.microlink.io?url=${encodeURIComponent(url)}&meta=true`);
+  const microlinkData = await microlinkRes.json();
+  const title = microlinkData?.data?.title || productName || "";
+  const description = microlinkData?.data?.description || "";
+  const fullText = `${title} ${description} ${productName || ""}`;
+  let price: number | null = null;
+  const priceMatch = fullText.match(/\$\s*(\d+\.?\d*)/);
+  if (priceMatch) price = parseFloat(priceMatch[1]);
+  const category = categoryFromUrl || detectCategoryFromText(fullText);
+  const defaults = CATEGORY_WEIGHTS[category] || CATEGORY_WEIGHTS["other"];
+  let weight = parseWeight(fullText);
+  const dims = parseDimensions(fullText);
+  if (!weight) weight = defaults.weight;
+  const finalDims = dims || { l: defaults.l, w: defaults.w, h: defaults.h };
+  return {
+    weightLbs: parseFloat(weight.toFixed(2)),
+    lengthInch: finalDims.l, widthInch: finalDims.w, heightInch: finalDims.h,
+    category, price,
+    confidence: weight !== defaults.weight ? "high" : "low",
+    productName: title || productName || "Unknown",
+  };
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
   try {
     const { url, productName } = await req.json();
-    const normalizedProductName = normalizeProductName(productName || "", url || "");
-
-    console.log("📦 extract-product-weight called:", {
-      url,
-      productName,
-      normalizedProductName,
-    });
-
-    let weightLbs: number | null = null;
-    let price: number | null = null;
-    let lengthInch = 0;
-    let widthInch = 0;
-    let heightInch = 0;
-    let category = categorizeProduct(normalizedProductName);
-
-    // ── Step 1: Try regex extraction from product name ──
-    weightLbs = extractWeightFromName(normalizedProductName);
-    if (weightLbs) {
-      console.log(`✅ Weight extracted from product name: ${weightLbs} lbs`);
+    const apiKey = Deno.env.get("SCRAPINGDOG_API_KEY") || "";
+    let result;
+    if (isAmazon(url)) {
+      console.log("Processing Amazon");
+      result = await fetchAmazonData(url, productName, apiKey);
+    } else if (isEbay(url)) {
+      console.log("Processing eBay");
+      result = await fetchEbayData(url, productName);
+    } else {
+      console.log("Processing generic:", url);
+      result = await fetchGenericData(url, productName);
     }
-
-    // ── Step 2: Scrape product page via Jina AI for more details ──
-    const { text: jinaText, sourceUrl } = await fetchBestJinaText(url);
-    console.log(`✅ Jina returned ${jinaText.length} chars from: ${sourceUrl}`);
-
-    // ── Step 3: Extract price from page if available ──
-    if (jinaText) {
-      const pagePrice = extractPrice(jinaText);
-      if (pagePrice && pagePrice > 0) {
-        price = pagePrice;
-        console.log(`✅ Price from page: $${price}`);
-      }
-    }
-
-    // ── Step 4: If no weight from name, try to find it in page text ──
-    if (!weightLbs && jinaText) {
-      // Look for "Item Weight" or "Shipping Weight" patterns (common on Amazon)
-      // Handle no-space cases like "Item Weight20 Pounds"
-      const weightPatterns = [
-        /(?:Item|Product|Shipping|Package)\s*Weight[:\s\u200e\u200f]*(\d+\.?\d*)\s*(pounds?|lbs?|lb)\b/i,
-        /(?:Item|Product|Shipping|Package)\s*Weight[:\s\u200e\u200f]*(\d+\.?\d*)\s*(ounces?|oz)\b/i,
-        /(?:Item|Product|Shipping|Package)\s*Weight[:\s\u200e\u200f]*(\d+\.?\d*)\s*(kg|kilograms?)\b/i,
-        /(?:Weight)[:\s\u200e\u200f]*(\d+\.?\d*)\s*(pounds?|lbs?|lb)\b/i,
-        /(\d+\.?\d*)\s*(pounds?|lbs?|lb)\b/i,
-      ];
-      for (const pattern of weightPatterns) {
-        const match = jinaText.match(pattern);
-        if (match) {
-          const w = parseFloat(match[1]);
-          const unit = match[2].toLowerCase();
-          if (w > 0 && w < 5000) {
-            if (unit.startsWith("oz") || unit.startsWith("ounce")) {
-              weightLbs = parseFloat((w / 16).toFixed(2));
-            } else if (unit === "kg" || unit.startsWith("kilogram")) {
-              weightLbs = parseFloat((w * 2.20462).toFixed(2));
-            } else {
-              weightLbs = w;
-            }
-            console.log(`✅ Weight from page scrape: ${weightLbs} lbs (raw: ${w} ${unit})`);
-            break;
-          }
-        }
-      }
-
-      // Extract dimensions from page
-      const dims = extractDimensions(jinaText);
-      if (dims) {
-        lengthInch = dims.lengthInch;
-        widthInch = dims.widthInch;
-        heightInch = dims.heightInch;
-        console.log(`✅ Dimensions: ${lengthInch} x ${widthInch} x ${heightInch} in`);
-      }
-    }
-
-    // ── Step 5: Use AI as last resort for weight extraction ──
-    if (!weightLbs && jinaText.length > 100) {
-      try {
-        const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-        if (LOVABLE_API_KEY) {
-          const aiRes = await fetch(
-            "https://ai.gateway.lovable.dev/v1/chat/completions",
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${LOVABLE_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: "google/gemini-2.5-flash-lite",
-                messages: [
-                  {
-                    role: "system",
-                    content:
-                      'Extract product weight in lbs, price in USD, and dimensions in inches from this product page text. Return ONLY valid JSON: {"weightLbs":number,"price":number,"lengthInch":number,"widthInch":number,"heightInch":number}. If a value is unknown, use 0.',
-                  },
-                  {
-                    role: "user",
-                    content: jinaText.substring(0, 4000),
-                  },
-                ],
-                temperature: 0,
-              }),
-            }
-          );
-          const aiJson = await aiRes.json();
-          const content = aiJson.choices?.[0]?.message?.content || "";
-          // Extract JSON from response
-          const jsonMatch = content.match(/\{[^}]+\}/);
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            if (!weightLbs && parsed.weightLbs > 0) {
-              weightLbs = parsed.weightLbs;
-              console.log(`✅ Weight from AI: ${weightLbs} lbs`);
-            }
-            if (!price && parsed.price > 0) {
-              price = parsed.price;
-            }
-            if (!lengthInch && parsed.lengthInch > 0) {
-              lengthInch = parsed.lengthInch;
-              widthInch = parsed.widthInch || 0;
-              heightInch = parsed.heightInch || 0;
-            }
-          }
-        }
-      } catch (e) {
-        console.warn("⚠️ AI extraction failed:", e);
-      }
-    }
-
-    const result = {
-      weightLbs: weightLbs || 0,
-      price: price || 0,
-      lengthInch,
-      widthInch,
-      heightInch,
-      category,
-      productName: normalizedProductName,
-    };
-
-    console.log("📦 Final result:", result);
-
+    console.log("Result:", JSON.stringify(result));
     return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("❌ extract-product-weight error:", err);
+    console.error("Error:", String(err));
+    const defaults = CATEGORY_WEIGHTS["other"];
     return new Response(
-      JSON.stringify({ error: err.message, weightLbs: 0, price: 0 }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({
+        weightLbs: defaults.weight, lengthInch: defaults.l,
+        widthInch: defaults.w, heightInch: defaults.h,
+        category: "other", price: null, confidence: "low",
+        error: String(err),
+      }),
+      { headers: { ...CORS_HEADERS, "Content-Type": "application/json" }, status: 200 }
     );
   }
 });
