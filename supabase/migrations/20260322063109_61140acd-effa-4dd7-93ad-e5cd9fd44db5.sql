@@ -1,0 +1,1 @@
+DELETE FROM product_cache WHERE url = 'https://www.amazon.com/FORZAGEN-Chocolate-Flavored-Proteinas-Aumentar/dp/B07X5YXNL7/' AND actual_weight_lbs = 2;

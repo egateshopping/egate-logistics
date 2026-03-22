@@ -131,10 +131,15 @@ export default function NewOrder() {
       // Try extract-product-weight (may fail)
       let aiData: any = null;
       try {
-        const { data } = await supabase.functions.invoke("extract-product-weight", {
+        const { data, error } = await supabase.functions.invoke("extract-product-weight", {
           body: { url, productName },
         });
-        aiData = data;
+        if (!error && data) {
+          aiData = data;
+          console.log("extract-product-weight response:", JSON.stringify(aiData));
+        } else {
+          console.warn("extract-product-weight error:", error);
+        }
       } catch (err) {
         console.warn("extract-product-weight failed, using fallbacks:", err);
       }
