@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { getStatusLabel, getStatusColor } from '@/lib/supabase';
+import type { OrderStatus } from '@/lib/supabase';
 import { format } from 'date-fns';
 
 interface ShipmentOrder {
