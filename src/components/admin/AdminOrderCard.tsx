@@ -208,7 +208,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
         international_tracking: internationalTracking || null,
         international_carrier: internationalCarrier || null,
         eta: eta || null,
-      } as any)
+      })
       .eq("id", order.id);
     setIsSaving(false);
     if (error) {

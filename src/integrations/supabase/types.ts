@@ -93,11 +93,13 @@ export type Database = {
           created_at: string
           customs: number | null
           discount: number | null
+          domestic_carrier: string | null
           domestic_shipping: number | null
           domestic_tracking: string | null
           eta: string | null
           height_in: number | null
           id: string
+          international_carrier: string | null
           international_shipping: number | null
           international_tracking: string | null
           is_paid: boolean | null
@@ -130,11 +132,13 @@ export type Database = {
           created_at?: string
           customs?: number | null
           discount?: number | null
+          domestic_carrier?: string | null
           domestic_shipping?: number | null
           domestic_tracking?: string | null
           eta?: string | null
           height_in?: number | null
           id?: string
+          international_carrier?: string | null
           international_shipping?: number | null
           international_tracking?: string | null
           is_paid?: boolean | null
@@ -167,11 +171,13 @@ export type Database = {
           created_at?: string
           customs?: number | null
           discount?: number | null
+          domestic_carrier?: string | null
           domestic_shipping?: number | null
           domestic_tracking?: string | null
           eta?: string | null
           height_in?: number | null
           id?: string
+          international_carrier?: string | null
           international_shipping?: number | null
           international_tracking?: string | null
           is_paid?: boolean | null
