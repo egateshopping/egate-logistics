@@ -174,6 +174,7 @@ export default function AdminShipments() {
             </div>
           </div>
           <CreateShipmentDialog onCreated={fetchShipments} />
+        </div>
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
