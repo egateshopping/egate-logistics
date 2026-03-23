@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { AdminShipmentCard } from '@/components/admin/AdminShipmentCard';
+import { CreateShipmentDialog } from '@/components/admin/CreateShipmentDialog';
 import { format } from 'date-fns';
 
 interface Shipment {
