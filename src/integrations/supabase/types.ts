@@ -106,6 +106,7 @@ export type Database = {
           length_in: number | null
           other_fees: number | null
           other_fees_note: string | null
+          package_code: string | null
           payment_receipt_url: string | null
           product_image: string | null
           product_title: string | null
@@ -145,6 +146,7 @@ export type Database = {
           length_in?: number | null
           other_fees?: number | null
           other_fees_note?: string | null
+          package_code?: string | null
           payment_receipt_url?: string | null
           product_image?: string | null
           product_title?: string | null
@@ -184,6 +186,7 @@ export type Database = {
           length_in?: number | null
           other_fees?: number | null
           other_fees_note?: string | null
+          package_code?: string | null
           payment_receipt_url?: string | null
           product_image?: string | null
           product_title?: string | null
