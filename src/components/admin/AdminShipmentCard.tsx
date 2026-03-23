@@ -60,6 +60,9 @@ interface Shipment {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  last_location?: string | null;
+  last_status?: string | null;
+  last_update?: string | null;
 }
 
 interface AdminShipmentCardProps {
