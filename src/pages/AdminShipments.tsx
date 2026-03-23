@@ -259,6 +259,7 @@ export default function AdminShipments() {
                   shipment={shipment} 
                   profile={shipment.profiles}
                   ordersCount={shipment.orders_count || 0}
+                  packageCodes={shipment.package_codes || []}
                   onUpdate={fetchShipments} 
                 />
               ))
