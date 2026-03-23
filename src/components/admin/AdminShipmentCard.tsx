@@ -104,6 +104,28 @@ export function AdminShipmentCard({ shipment, profile, ordersCount, packageCodes
   const [notes, setNotes] = useState(shipment.notes || '');
   const [isSaving, setIsSaving] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [trackingInfo, setTrackingInfo] = useState<{ lastLocation: string; lastUpdate: string; status: string } | null>(null);
+  const [isTracking, setIsTracking] = useState(false);
+
+  const fetchTrackingInfo = async () => {
+    if (!shipment.master_tracking_number || !shipment.carrier) return;
+    setIsTracking(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('track-shipment', {
+        body: { carrier: shipment.carrier, trackingNumber: shipment.master_tracking_number },
+      });
+      if (error) {
+        toast.error('Failed to fetch tracking info');
+      } else if (data?.success && data.data) {
+        setTrackingInfo(data.data);
+      } else {
+        toast.error(data?.error || 'Could not parse tracking');
+      }
+    } catch (e) {
+      toast.error('Tracking request failed');
+    }
+    setIsTracking(false);
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
