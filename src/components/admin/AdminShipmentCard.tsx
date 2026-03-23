@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { 
   Truck, Package, User, Phone, MapPin,
   ChevronDown, ChevronUp, DollarSign, Scale, MessageCircle,
-  ExternalLink, XCircle, Tag
+  ExternalLink, XCircle, Tag, Navigation, Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -104,6 +104,28 @@ export function AdminShipmentCard({ shipment, profile, ordersCount, packageCodes
   const [notes, setNotes] = useState(shipment.notes || '');
   const [isSaving, setIsSaving] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [trackingInfo, setTrackingInfo] = useState<{ lastLocation: string; lastUpdate: string; status: string } | null>(null);
+  const [isTracking, setIsTracking] = useState(false);
+
+  const fetchTrackingInfo = async () => {
+    if (!shipment.master_tracking_number || !shipment.carrier) return;
+    setIsTracking(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('track-shipment', {
+        body: { carrier: shipment.carrier, trackingNumber: shipment.master_tracking_number },
+      });
+      if (error) {
+        toast.error('Failed to fetch tracking info');
+      } else if (data?.success && data.data) {
+        setTrackingInfo(data.data);
+      } else {
+        toast.error(data?.error || 'Could not parse tracking');
+      }
+    } catch (e) {
+      toast.error('Tracking request failed');
+    }
+    setIsTracking(false);
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -308,7 +330,42 @@ export function AdminShipmentCard({ shipment, profile, ordersCount, packageCodes
                     </div>
                   )}
 
-                  {/* Customer Info */}
+                  {/* Live Tracking Location */}
+                  {shipment.master_tracking_number && (
+                    <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                      {trackingInfo ? (
+                        <div className="flex items-center gap-2 text-xs">
+                          <Navigation className="h-3 w-3 text-primary" />
+                          <span className="text-primary font-medium">{trackingInfo.status}</span>
+                          {trackingInfo.lastLocation !== 'N/A' && (
+                            <span className="text-muted-foreground">• {trackingInfo.lastLocation}</span>
+                          )}
+                          {trackingInfo.lastUpdate && (
+                            <span className="text-muted-foreground">• {trackingInfo.lastUpdate}</span>
+                          )}
+                          <button
+                            onClick={fetchTrackingInfo}
+                            className="text-primary hover:underline text-[10px] ml-1"
+                          >
+                            {isTracking ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Refresh'}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={fetchTrackingInfo}
+                          disabled={isTracking}
+                          className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50"
+                        >
+                          {isTracking ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Navigation className="h-3 w-3" />
+                          )}
+                          {isTracking ? 'Fetching...' : 'Get Live Location'}
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {profile && (
                     <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
                       <Link 
