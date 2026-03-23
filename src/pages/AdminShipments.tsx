@@ -43,6 +43,7 @@ interface ShipmentWithProfile extends Shipment {
     city: string | null;
   };
   orders_count?: number;
+  package_codes?: string[];
 }
 
 export default function AdminShipments() {
@@ -85,17 +86,23 @@ export default function AdminShipments() {
         .select('user_id, full_name, phone, address, city')
         .in('user_id', userIds);
 
-      // Count orders per shipment
+      // Count orders per shipment and get package codes
       const shipmentIds = shipmentsData.map(s => s.id);
       const { data: ordersData } = await supabase
         .from('orders')
-        .select('id, shipment_id')
+        .select('id, shipment_id, package_code')
         .in('shipment_id', shipmentIds);
 
       const orderCountMap = new Map<string, number>();
-      ordersData?.forEach(o => {
+      const packageCodesMap = new Map<string, string[]>();
+      ordersData?.forEach((o: any) => {
         if (o.shipment_id) {
           orderCountMap.set(o.shipment_id, (orderCountMap.get(o.shipment_id) || 0) + 1);
+          if (o.package_code) {
+            const codes = packageCodesMap.get(o.shipment_id) || [];
+            codes.push(o.package_code.trim());
+            packageCodesMap.set(o.shipment_id, codes);
+          }
         }
       });
 
@@ -104,6 +111,7 @@ export default function AdminShipments() {
         ...s,
         profiles: profileMap.get(s.user_id),
         orders_count: orderCountMap.get(s.id) || 0,
+        package_codes: packageCodesMap.get(s.id) || [],
       }));
 
       setShipments(shipmentsWithProfiles as ShipmentWithProfile[]);
@@ -251,6 +259,7 @@ export default function AdminShipments() {
                   shipment={shipment} 
                   profile={shipment.profiles}
                   ordersCount={shipment.orders_count || 0}
+                  packageCodes={shipment.package_codes || []}
                   onUpdate={fetchShipments} 
                 />
               ))
@@ -270,6 +279,7 @@ export default function AdminShipments() {
                   shipment={shipment} 
                   profile={shipment.profiles}
                   ordersCount={shipment.orders_count || 0}
+                  packageCodes={shipment.package_codes || []}
                   onUpdate={fetchShipments} 
                 />
               ))
@@ -289,6 +299,7 @@ export default function AdminShipments() {
                   shipment={shipment} 
                   profile={shipment.profiles}
                   ordersCount={shipment.orders_count || 0}
+                  packageCodes={shipment.package_codes || []}
                   onUpdate={fetchShipments} 
                 />
               ))
@@ -308,6 +319,7 @@ export default function AdminShipments() {
                   shipment={shipment} 
                   profile={shipment.profiles}
                   ordersCount={shipment.orders_count || 0}
+                  packageCodes={shipment.package_codes || []}
                   onUpdate={fetchShipments} 
                 />
               ))

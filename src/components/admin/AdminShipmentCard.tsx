@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
-  Truck, Package, User, Phone, MapPin, Calendar,
+  Truck, Package, User, Phone, MapPin,
   ChevronDown, ChevronUp, DollarSign, Scale, MessageCircle,
-  ExternalLink, Clock, CheckCircle, AlertCircle
+  ExternalLink, XCircle, Tag
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +21,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -55,6 +66,7 @@ interface AdminShipmentCardProps {
   shipment: Shipment;
   profile?: ShipmentProfile;
   ordersCount: number;
+  packageCodes: string[];
   onUpdate: () => void;
 }
 
@@ -75,11 +87,23 @@ const paymentStatuses = [
   'Refunded',
 ];
 
-export function AdminShipmentCard({ shipment, profile, ordersCount, onUpdate }: AdminShipmentCardProps) {
+function getTrackingUrl(carrier: string, trackingNumber: string): string | null {
+  if (!trackingNumber) return null;
+  if (carrier === 'DHL') {
+    return `https://www.dhl.com/global-en/home/tracking/tracking-global-forwarding.html?submit=1&tracking-id=${trackingNumber}`;
+  }
+  if (carrier === 'FedEx') {
+    return `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`;
+  }
+  return null;
+}
+
+export function AdminShipmentCard({ shipment, profile, ordersCount, packageCodes, onUpdate }: AdminShipmentCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [trackingNumber, setTrackingNumber] = useState(shipment.master_tracking_number || '');
   const [notes, setNotes] = useState(shipment.notes || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -165,6 +189,42 @@ export function AdminShipmentCard({ shipment, profile, ordersCount, onUpdate }: 
     onUpdate();
   };
 
+  const handleCancel = async () => {
+    setIsCancelling(true);
+
+    // Unlink all orders from this shipment and reset their status
+    const { error: ordersError } = await supabase
+      .from('orders')
+      .update({
+        shipment_id: null,
+        international_tracking: null,
+        status: 'at_warehouse' as any,
+      })
+      .eq('shipment_id', shipment.id);
+
+    if (ordersError) {
+      toast.error('Failed to unlink orders');
+      setIsCancelling(false);
+      return;
+    }
+
+    // Update shipment status to Cancelled
+    const { error: shipmentError } = await supabase
+      .from('shipments')
+      .update({ status: 'Cancelled' })
+      .eq('id', shipment.id);
+
+    setIsCancelling(false);
+
+    if (shipmentError) {
+      toast.error('Orders unlinked but failed to cancel shipment');
+      return;
+    }
+
+    toast.success('Shipment cancelled and orders returned to warehouse');
+    onUpdate();
+  };
+
   const openWhatsApp = () => {
     if (!profile?.phone) return;
     const message = encodeURIComponent(
@@ -172,6 +232,8 @@ export function AdminShipmentCard({ shipment, profile, ordersCount, onUpdate }: 
     );
     window.open(`https://wa.me/${profile.phone.replace(/[^0-9]/g, '')}?text=${message}`, '_blank');
   };
+
+  const trackingUrl = getTrackingUrl(shipment.carrier, shipment.master_tracking_number || '');
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -189,9 +251,23 @@ export function AdminShipmentCard({ shipment, profile, ordersCount, onUpdate }: 
                 {/* Main Info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-sm font-bold">
-                      {shipment.master_tracking_number || 'No Tracking'}
-                    </span>
+                    {trackingUrl ? (
+                      <a
+                        href={trackingUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-mono text-sm font-bold text-primary hover:underline flex items-center gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {shipment.master_tracking_number}
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : (
+                      <span className="font-mono text-sm font-bold">
+                        {shipment.master_tracking_number || 'No Tracking'}
+                      </span>
+                    )}
+                    <Badge variant="outline" className="text-[10px]">{shipment.carrier}</Badge>
                     <Badge variant="outline" className={getStatusColor(shipment.status)}>
                       {shipment.status}
                     </Badge>
@@ -219,6 +295,18 @@ export function AdminShipmentCard({ shipment, profile, ordersCount, onUpdate }: 
                       </span>
                     )}
                   </div>
+
+                  {/* Package Codes */}
+                  {packageCodes.length > 0 && (
+                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                      <Tag className="h-3 w-3 text-muted-foreground" />
+                      {packageCodes.map((code, idx) => (
+                        <Badge key={idx} variant="secondary" className="text-[10px] font-mono font-bold px-1.5 py-0">
+                          {code}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Customer Info */}
                   {profile && (
@@ -283,12 +371,25 @@ export function AdminShipmentCard({ shipment, profile, ordersCount, onUpdate }: 
                   <Label htmlFor="tracking" className="text-xs text-muted-foreground">
                     Tracking Number
                   </Label>
-                  <Input
-                    id="tracking"
-                    value={trackingNumber}
-                    onChange={(e) => setTrackingNumber(e.target.value)}
-                    placeholder="Enter tracking number"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      id="tracking"
+                      value={trackingNumber}
+                      onChange={(e) => setTrackingNumber(e.target.value)}
+                      placeholder="Enter tracking number"
+                    />
+                    {trackingUrl && (
+                      <a
+                        href={trackingUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Button variant="outline" size="icon" type="button">
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      </a>
+                    )}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -323,6 +424,23 @@ export function AdminShipmentCard({ shipment, profile, ordersCount, onUpdate }: 
                     </Select>
                   </div>
                 </div>
+
+                {/* Package Codes in expanded view */}
+                {packageCodes.length > 0 && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Package Codes</Label>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {packageCodes.map((code, idx) => (
+                        <Badge key={idx} variant="outline" className="font-mono font-bold text-xs">
+                          {code}
+                        </Badge>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1 font-mono">
+                      Consolidated: {packageCodes.join(' + ')}
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <Label htmlFor="notes" className="text-xs text-muted-foreground">Notes</Label>
@@ -412,6 +530,39 @@ export function AdminShipmentCard({ shipment, profile, ordersCount, onUpdate }: 
                     <MessageCircle className="h-4 w-4 mr-2" />
                     WhatsApp
                   </Button>
+                )}
+                {shipment.status !== 'Cancelled' && shipment.status !== 'Delivered' && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        <XCircle className="h-4 w-4 mr-2" />
+                        Cancel Shipment
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Cancel this shipment?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will cancel the shipment and return all {ordersCount} orders back to "At Warehouse" status. 
+                          {packageCodes.length > 0 && (
+                            <span className="block mt-2 font-mono text-xs">
+                              Packages: {packageCodes.join(' + ')}
+                            </span>
+                          )}
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Keep Shipment</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleCancel}
+                          disabled={isCancelling}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          {isCancelling ? 'Cancelling...' : 'Yes, Cancel Shipment'}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 )}
               </div>
               <Button onClick={handleSave} disabled={isSaving}>
