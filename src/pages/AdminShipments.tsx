@@ -43,6 +43,7 @@ interface ShipmentWithProfile extends Shipment {
     city: string | null;
   };
   orders_count?: number;
+  package_codes?: string[];
 }
 
 export default function AdminShipments() {
