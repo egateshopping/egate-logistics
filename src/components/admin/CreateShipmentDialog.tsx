@@ -90,12 +90,12 @@ export function CreateShipmentDialog({ onCreated }: CreateShipmentDialogProps) {
   // Parse codes from text like "Consolidated from: ERM + ERN + ERO"
   const parseCodesFromText = (text: string): string[] => {
     // Remove "Consolidated from:" prefix if present
-    const cleaned = text.replace(/^.*?:/i, '').trim();
-    // Split by + or , or whitespace and clean
+    const cleaned = text.replace(/consolidated\s*from\s*:/i, '').trim();
+    // Split by +, commas, newlines, or any whitespace and clean
     return cleaned
-      .split(/[\+,\s]+/)
+      .split(/[\+,\r\n\t ]+/)
       .map(c => c.trim().toUpperCase())
-      .filter(c => c.length > 0);
+      .filter(c => c.length > 0 && /^[A-Z0-9]+$/.test(c));
   };
 
   const handleMatchCodes = () => {
