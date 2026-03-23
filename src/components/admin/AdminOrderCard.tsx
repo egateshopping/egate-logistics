@@ -376,6 +376,11 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
               <span>
                 Qty: <strong>{order.quantity}</strong>
               </span>
+              {(order as any).package_code && (
+                <span>
+                  <strong className="text-primary">📦 Code:</strong> {(order as any).package_code}
+                </span>
+              )}
               {order.special_notes && (
                 <span className="text-warning">
                   <strong>Notes:</strong> {order.special_notes}
@@ -387,6 +392,27 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
                 </span>
               )}
             </div>
+
+            {/* Package Code Input - shown for at_warehouse status */}
+            {['at_warehouse', 'international_shipping', 'customs', 'out_for_delivery', 'delivered'].includes(order.status || '') && (
+              <div className="flex items-center gap-2 mb-3">
+                <Input
+                  value={packageCode}
+                  onChange={(e) => setPackageCode(e.target.value.toUpperCase())}
+                  placeholder="Enter package code (e.g. ERM)"
+                  className="max-w-[200px] h-8 text-sm font-mono"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSavePackageCode}
+                  disabled={isSavingCode || packageCode === ((order as any).package_code || "")}
+                  className="h-8"
+                >
+                  {isSavingCode ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save Code"}
+                </Button>
+              </div>
+            )}
 
             {/* أزرار الإجراءات */}
             <div className="flex items-center gap-2 flex-wrap">
