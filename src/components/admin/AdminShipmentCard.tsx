@@ -60,6 +60,9 @@ interface Shipment {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  last_location?: string | null;
+  last_status?: string | null;
+  last_update?: string | null;
 }
 
 interface AdminShipmentCardProps {
@@ -104,7 +107,9 @@ export function AdminShipmentCard({ shipment, profile, ordersCount, packageCodes
   const [notes, setNotes] = useState(shipment.notes || '');
   const [isSaving, setIsSaving] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
-  const [trackingInfo, setTrackingInfo] = useState<{ lastLocation: string; lastUpdate: string; status: string } | null>(null);
+  const [trackingInfo, setTrackingInfo] = useState<{ lastLocation: string; lastUpdate: string; status: string } | null>(
+    shipment.last_status ? { lastLocation: shipment.last_location || 'N/A', lastUpdate: shipment.last_update || '', status: shipment.last_status } : null
+  );
   const [isTracking, setIsTracking] = useState(false);
 
   const fetchTrackingInfo = async () => {
@@ -117,7 +122,14 @@ export function AdminShipmentCard({ shipment, profile, ordersCount, packageCodes
       if (error) {
         toast.error('Failed to fetch tracking info');
       } else if (data?.success && data.data) {
-        setTrackingInfo(data.data);
+        const info = { lastLocation: data.data.lastLocation, lastUpdate: data.data.lastUpdate, status: data.data.status };
+        setTrackingInfo(info);
+        // Persist to DB
+        await supabase.from('shipments').update({
+          last_location: info.lastLocation,
+          last_status: info.status,
+          last_update: info.lastUpdate,
+        }).eq('id', shipment.id);
       } else {
         toast.error(data?.error || 'Could not parse tracking');
       }
