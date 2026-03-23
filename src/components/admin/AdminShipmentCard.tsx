@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { 
   Truck, Package, User, Phone, MapPin,
   ChevronDown, ChevronUp, DollarSign, Scale, MessageCircle,
-  ExternalLink, XCircle, Tag
+  ExternalLink, XCircle, Tag, Navigation, Loader2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
