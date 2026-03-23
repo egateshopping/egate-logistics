@@ -16,6 +16,7 @@ import Admin from "./pages/Admin";
 import AdminWeightSettings from "./pages/AdminWeightSettings";
 import AdminShipments from "./pages/AdminShipments";
 import CustomerProfile from "./pages/CustomerProfile";
+import ShipmentDetails from "./pages/ShipmentDetails";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
