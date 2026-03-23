@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Plus, Package, Check, Search } from 'lucide-react';
+import { Plus, Package, Search, Upload, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -32,6 +33,7 @@ interface OrderOption {
   length_in: number | null;
   width_in: number | null;
   height_in: number | null;
+  package_code: string | null;
   profile_name?: string;
 }
 
@@ -46,6 +48,7 @@ export function CreateShipmentDialog({ onCreated }: CreateShipmentDialogProps) {
   const [carrier, setCarrier] = useState('DHL');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [search, setSearch] = useState('');
+  const [codesText, setCodesText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -57,19 +60,19 @@ export function CreateShipmentDialog({ onCreated }: CreateShipmentDialogProps) {
     setIsLoading(true);
     const { data: ordersData } = await supabase
       .from('orders')
-      .select('id, product_title, user_id, status, weight_lbs, quantity, length_in, width_in, height_in')
+      .select('id, product_title, user_id, status, weight_lbs, quantity, length_in, width_in, height_in, package_code' as any)
       .is('shipment_id', null)
       .order('created_at', { ascending: false });
 
     if (ordersData && ordersData.length > 0) {
-      const userIds = [...new Set(ordersData.map(o => o.user_id))];
+      const userIds = [...new Set(ordersData.map((o: any) => o.user_id))];
       const { data: profiles } = await supabase
         .from('profiles')
         .select('user_id, full_name')
         .in('user_id', userIds);
 
       const profileMap = new Map(profiles?.map(p => [p.user_id, p.full_name]) || []);
-      setOrders(ordersData.map(o => ({ ...o, profile_name: profileMap.get(o.user_id) || 'Unknown' })));
+      setOrders(ordersData.map((o: any) => ({ ...o, profile_name: profileMap.get(o.user_id) || 'Unknown' })));
     } else {
       setOrders([]);
     }
@@ -82,6 +85,45 @@ export function CreateShipmentDialog({ onCreated }: CreateShipmentDialogProps) {
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  };
+
+  // Parse codes from text like "Consolidated from: ERM + ERN + ERO"
+  const parseCodesFromText = (text: string): string[] => {
+    // Remove "Consolidated from:" prefix if present
+    const cleaned = text.replace(/^.*?:/i, '').trim();
+    // Split by + or , or whitespace and clean
+    return cleaned
+      .split(/[\+,\s]+/)
+      .map(c => c.trim().toUpperCase())
+      .filter(c => c.length > 0);
+  };
+
+  const handleMatchCodes = () => {
+    const codes = parseCodesFromText(codesText);
+    if (codes.length === 0) {
+      toast.error('No valid codes found in the text');
+      return;
+    }
+
+    const matched = new Set<string>();
+    const unmatchedCodes: string[] = [];
+
+    codes.forEach(code => {
+      const order = orders.find(o => o.package_code?.toUpperCase() === code);
+      if (order) {
+        matched.add(order.id);
+      } else {
+        unmatchedCodes.push(code);
+      }
+    });
+
+    setSelectedIds(matched);
+
+    if (unmatchedCodes.length > 0) {
+      toast.warning(`Matched ${matched.size}/${codes.length} codes. Unmatched: ${unmatchedCodes.join(', ')}`);
+    } else {
+      toast.success(`All ${matched.size} codes matched!`);
+    }
   };
 
   const selectedOrders = orders.filter(o => selectedIds.has(o.id));
@@ -97,6 +139,11 @@ export function CreateShipmentDialog({ onCreated }: CreateShipmentDialogProps) {
   const ratePerLb = carrier === 'DHL' ? 8 : 7;
   const totalCost = baseRate + chargeableWeight * ratePerLb;
 
+  const consolidatedCodes = selectedOrders
+    .filter(o => o.package_code)
+    .map(o => o.package_code)
+    .join(' + ');
+
   const handleCreate = async () => {
     if (selectedIds.size === 0) {
       toast.error('Select at least one order');
@@ -105,9 +152,12 @@ export function CreateShipmentDialog({ onCreated }: CreateShipmentDialogProps) {
 
     setIsCreating(true);
 
-    // Get user_id from first selected order
     const firstOrder = selectedOrders[0];
     const tracking = trackingNumber || `${carrier === 'DHL' ? 'JD' : 'FED'}${Math.floor(1000000000 + Math.random() * 9000000000)}`;
+
+    const notes = consolidatedCodes
+      ? `Consolidated from: ${consolidatedCodes}`
+      : `Manual shipment. ${selectedIds.size} items.`;
 
     const { data: shipment, error: shipError } = await supabase
       .from('shipments')
@@ -123,7 +173,7 @@ export function CreateShipmentDialog({ onCreated }: CreateShipmentDialogProps) {
         paid_from_wallet: 0,
         cod_amount: totalCost,
         payment_status: 'COD Pending',
-        notes: `Manual shipment. ${selectedIds.size} items.`,
+        notes,
       })
       .select()
       .single();
@@ -154,6 +204,7 @@ export function CreateShipmentDialog({ onCreated }: CreateShipmentDialogProps) {
     setOpen(false);
     setSelectedIds(new Set());
     setTrackingNumber('');
+    setCodesText('');
     onCreated();
   };
 
@@ -163,6 +214,7 @@ export function CreateShipmentDialog({ onCreated }: CreateShipmentDialogProps) {
     return (
       o.product_title?.toLowerCase().includes(q) ||
       o.profile_name?.toLowerCase().includes(q) ||
+      o.package_code?.toLowerCase().includes(q) ||
       o.id.toLowerCase().includes(q)
     );
   });
@@ -195,9 +247,27 @@ export function CreateShipmentDialog({ onCreated }: CreateShipmentDialogProps) {
             </Select>
           </div>
           <div>
-            <Label className="text-xs text-muted-foreground">Tracking # (auto-generated if empty)</Label>
+            <Label className="text-xs text-muted-foreground">Tracking # (auto if empty)</Label>
             <Input value={trackingNumber} onChange={e => setTrackingNumber(e.target.value)} placeholder="Optional" />
           </div>
+        </div>
+
+        {/* Paste codes to auto-match */}
+        <div className="mb-4 p-3 bg-muted/30 border border-border rounded-lg space-y-2">
+          <Label className="text-xs font-medium flex items-center gap-1">
+            <FileText className="h-3 w-3" />
+            Paste Package Codes (auto-match orders)
+          </Label>
+          <Textarea
+            value={codesText}
+            onChange={e => setCodesText(e.target.value)}
+            placeholder="Consolidated from: ERM + ERN + ERO + ERP + ERQ..."
+            className="text-sm font-mono min-h-[60px]"
+          />
+          <Button size="sm" variant="outline" onClick={handleMatchCodes} disabled={!codesText.trim()}>
+            <Upload className="h-3 w-3 mr-1" />
+            Match Codes
+          </Button>
         </div>
 
         {/* Summary */}
@@ -210,10 +280,17 @@ export function CreateShipmentDialog({ onCreated }: CreateShipmentDialogProps) {
           </div>
         )}
 
+        {/* Consolidated codes preview */}
+        {consolidatedCodes && (
+          <div className="p-2 bg-muted/50 rounded-lg mb-2 text-xs font-mono text-muted-foreground truncate">
+            Consolidated from: {consolidatedCodes}
+          </div>
+        )}
+
         {/* Search */}
         <div className="relative mb-2">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search orders..." className="pl-10" />
+          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, code, or customer..." className="pl-10" />
         </div>
 
         {/* Orders list */}
@@ -236,6 +313,12 @@ export function CreateShipmentDialog({ onCreated }: CreateShipmentDialogProps) {
                   <p className="text-sm font-medium truncate">{order.product_title || 'Product Order'}</p>
                   <div className="flex gap-2 text-xs text-muted-foreground mt-0.5">
                     <span>{order.profile_name}</span>
+                    {order.package_code && (
+                      <>
+                        <span>•</span>
+                        <span className="font-mono font-bold text-primary">{order.package_code}</span>
+                      </>
+                    )}
                     <span>•</span>
                     <span>Qty: {order.quantity}</span>
                     {order.weight_lbs && <><span>•</span><span>{order.weight_lbs} lbs</span></>}
