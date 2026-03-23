@@ -96,6 +96,25 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
   const [internationalCarrier, setInternationalCarrier] = useState((order as any).international_carrier || "");
   const [eta, setEta] = useState(order.eta || "");
 
+  // Package code state
+  const [packageCode, setPackageCode] = useState((order as any).package_code || "");
+  const [isSavingCode, setIsSavingCode] = useState(false);
+
+  const handleSavePackageCode = async () => {
+    setIsSavingCode(true);
+    const { error } = await supabase
+      .from("orders")
+      .update({ package_code: packageCode || null } as any)
+      .eq("id", order.id);
+    setIsSavingCode(false);
+    if (error) {
+      toast.error("Failed to save package code");
+      return;
+    }
+    toast.success("✅ Package code saved");
+    onUpdate();
+  };
+
   const calcPricing = () => {
     const vol = (pricing.length_in * pricing.width_in * pricing.height_in) / 139;
     const chargeable = Math.max(pricing.weight_lbs, vol);
