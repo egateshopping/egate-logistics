@@ -240,8 +240,8 @@ export default function ShipmentDetails() {
 
                   {/* Status & Price */}
                   <div className="text-right flex-shrink-0">
-                    <Badge className={`text-xs ${getStatusColor(order.status)}`}>
-                      {getStatusLabel(order.status)}
+                  <Badge className={`text-xs ${getStatusColor(order.status as OrderStatus)}`}>
+                      {getStatusLabel(order.status as OrderStatus)}
                     </Badge>
                     {order.base_item_cost && (
                       <p className="text-sm font-medium mt-1">${Number(order.base_item_cost).toFixed(2)}</p>
