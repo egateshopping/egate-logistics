@@ -2,148 +2,185 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
-function getDHLTrackingUrl(trackingNumber: string): string {
-  return `https://www.dhl.com/global-en/home/tracking/tracking-global-forwarding.html?submit=1&tracking-id=${trackingNumber}`;
-}
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+];
 
-function getFedExTrackingUrl(trackingNumber: string): string {
-  return `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`;
-}
-
-function parseDHLTracking(text: string): { lastLocation: string; lastUpdate: string; status: string } | null {
+// Use 17track API (publicly accessible JSON endpoint) for tracking
+async function fetchFrom17Track(trackingNumber: string, carrier: string): Promise<{ lastLocation: string; lastUpdate: string; status: string } | null> {
   try {
-    // Try to find location/status patterns from DHL page content
-    // DHL typically shows "Shipment picked up" or location-based updates
+    // 17track has a public tracking page we can scrape via Jina with retry
+    const trackUrl = `https://t.17track.net/en#nums=${trackingNumber}`;
     
-    // Pattern: Look for location entries like "City, Country" with timestamps
-    const locationPatterns = [
-      /(?:Latest|Last|Current)\s*(?:Status|Location|Update)[:\s]*([^\n]+)/i,
-      /(?:Departed|Arrived|Processed|Cleared|In Transit|Delivered|Picked up)[:\s]*(?:at|in|from)?\s*([A-Z][a-zA-Z\s,]+(?:,\s*[A-Z]{2,})?)[\s\n]/i,
-      /(\d{1,2}[\s\/.-]\w+[\s\/.-]\d{2,4})\s*[\n\s]*([^\n]+?)(?:\n|$)/,
+    // Try Jina first
+    const jinaUrl = `https://r.jina.ai/${trackUrl}`;
+    const res = await fetch(jinaUrl, {
+      headers: {
+        "User-Agent": USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
+        "Accept": "text/html,application/xhtml+xml",
+      }
+    });
+    
+    if (res.ok) {
+      const text = await res.text();
+      console.log('17track response length:', text.length);
+      console.log('17track preview:', text.substring(0, 1500));
+      return parseTrackingText(text);
+    }
+    console.log('17track Jina failed:', res.status);
+    return null;
+  } catch (e) {
+    console.error('17track error:', e);
+    return null;
+  }
+}
+
+// Try DHL direct API (public, no key needed for basic tracking)
+async function fetchDHLTracking(trackingNumber: string): Promise<{ lastLocation: string; lastUpdate: string; status: string } | null> {
+  try {
+    // DHL has a public unified tracking API endpoint
+    const url = `https://www.dhl.com/utapi?trackingNumber=${trackingNumber}&language=en&requesterCountryCode=US`;
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': USER_AGENTS[0],
+        'Accept': 'application/json',
+        'Referer': 'https://www.dhl.com/',
+      }
+    });
+
+    if (!res.ok) {
+      console.log('DHL utapi failed:', res.status);
+      const body = await res.text();
+      console.log('DHL response:', body.substring(0, 500));
+      return null;
+    }
+
+    const data = await res.json();
+    console.log('DHL API response:', JSON.stringify(data).substring(0, 2000));
+    
+    // Parse DHL unified tracking response
+    const shipments = data?.shipments;
+    if (shipments && shipments.length > 0) {
+      const shipment = shipments[0];
+      const latestEvent = shipment.events?.[0];
+      const statusInfo = shipment.status;
+      
+      let lastLocation = 'N/A';
+      let lastUpdate = '';
+      let status = statusInfo?.description || statusInfo?.status || 'Unknown';
+
+      if (latestEvent) {
+        const loc = latestEvent.location;
+        if (loc?.address) {
+          const addr = loc.address;
+          const parts = [addr.addressLocality, addr.countryCode].filter(Boolean);
+          lastLocation = parts.join(', ') || 'N/A';
+        }
+        lastUpdate = latestEvent.timestamp || latestEvent.date || '';
+        if (latestEvent.description) {
+          status = latestEvent.description;
+        }
+      }
+
+      // Format timestamp
+      if (lastUpdate) {
+        try {
+          const d = new Date(lastUpdate);
+          lastUpdate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        } catch {}
+      }
+
+      return { lastLocation, lastUpdate, status };
+    }
+    return null;
+  } catch (e) {
+    console.error('DHL API error:', e);
+    return null;
+  }
+}
+
+// FedEx doesn't have a simple public API, so we try scraping via Jina
+async function fetchFedExTracking(trackingNumber: string): Promise<{ lastLocation: string; lastUpdate: string; status: string } | null> {
+  try {
+    const trackUrl = `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`;
+    const jinaUrl = `https://r.jina.ai/${trackUrl}`;
+    
+    const res = await fetch(jinaUrl, {
+      headers: {
+        "User-Agent": USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
+        "Accept": "text/plain",
+        "X-No-Cache": "true",
+      }
+    });
+
+    if (!res.ok) {
+      console.log('FedEx Jina failed:', res.status);
+      // Fallback to 17track
+      return await fetchFrom17Track(trackingNumber, 'FedEx');
+    }
+
+    const text = await res.text();
+    console.log('FedEx response length:', text.length);
+    console.log('FedEx preview:', text.substring(0, 1500));
+    
+    return parseTrackingText(text) || await fetchFrom17Track(trackingNumber, 'FedEx');
+  } catch (e) {
+    console.error('FedEx scrape error:', e);
+    return await fetchFrom17Track(trackingNumber, 'FedEx');
+  }
+}
+
+function parseTrackingText(text: string): { lastLocation: string; lastUpdate: string; status: string } | null {
+  let lastLocation = '';
+  let lastUpdate = '';
+  let status = '';
+
+  // Pattern 1: Date + status + location lines
+  const eventPattern = /(\d{1,2}[\/.-]\w{3,9}[\/.-]\d{2,4})\s+(\d{1,2}:\d{2}(?:\s*(?:am|pm|AM|PM))?)\s+([^\n]+)/g;
+  const events = [...text.matchAll(eventPattern)];
+  if (events.length > 0) {
+    const latest = events[0];
+    lastUpdate = `${latest[1]} ${latest[2]}`;
+    const detail = latest[3].trim();
+    const parts = detail.split(/\s{2,}|\t|--/);
+    if (parts.length >= 2) {
+      lastLocation = parts[0].trim();
+      status = parts.slice(1).join(' ').trim();
+    } else {
+      status = detail;
+    }
+  }
+
+  // Pattern 2: Common tracking statuses
+  if (!status) {
+    const statusPatterns = [
+      /(delivered|in transit|picked up|out for delivery|shipment information received|departed|arrived|cleared customs|customs clearance|processing|label created|on fedex vehicle|at local fedex|international shipment release|at destination)/i,
     ];
-
-    let lastLocation = '';
-    let lastUpdate = '';
-    let status = '';
-
-    // Look for the most recent tracking event
-    // DHL format often: "Date Time | Location | Status"
-    const eventPattern = /(\d{1,2}[\/.-]\w{3}[\/.-]\d{2,4})\s+(\d{1,2}:\d{2})\s+([^\n]+)/g;
-    const events = [...text.matchAll(eventPattern)];
-    
-    if (events.length > 0) {
-      const latest = events[0];
-      lastUpdate = `${latest[1]} ${latest[2]}`;
-      const detail = latest[3].trim();
-      // Try to split location and status
-      const parts = detail.split(/\s{2,}|\t|--/);
-      if (parts.length >= 2) {
-        lastLocation = parts[0].trim();
-        status = parts.slice(1).join(' ').trim();
-      } else {
-        status = detail;
+    for (const pat of statusPatterns) {
+      const m = text.match(pat);
+      if (m) {
+        status = m[0].trim();
+        break;
       }
     }
-
-    // Fallback: look for common DHL patterns
-    if (!lastLocation && !status) {
-      // Try "Shipment information received" or similar
-      const statusMatch = text.match(/(Shipment\s+\w+[\w\s]*?)(?:\n|\.)/i);
-      if (statusMatch) {
-        status = statusMatch[1].trim();
-      }
-
-      // Try to find a city/country
-      const cityMatch = text.match(/(?:Origin|Destination|Location)[:\s]*([A-Za-z\s]+,\s*[A-Za-z\s]+)/i);
-      if (cityMatch) {
-        lastLocation = cityMatch[1].trim();
-      }
-    }
-
-    // Another fallback: grab any bold or emphasized location text
-    if (!lastLocation && !status) {
-      const boldMatch = text.match(/\*\*([^*]+)\*\*/);
-      if (boldMatch) {
-        status = boldMatch[1].trim();
-      }
-    }
-
-    if (!lastLocation && !status) return null;
-
-    return {
-      lastLocation: lastLocation || 'N/A',
-      lastUpdate: lastUpdate || '',
-      status: status || 'Check carrier website',
-    };
-  } catch (e) {
-    console.error('DHL parse error:', e);
-    return null;
   }
-}
 
-function parseFedExTracking(text: string): { lastLocation: string; lastUpdate: string; status: string } | null {
-  try {
-    let lastLocation = '';
-    let lastUpdate = '';
-    let status = '';
-
-    // FedEx patterns
-    const eventPattern = /(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{1,2}:\d{2}\s*(?:am|pm)?)\s+([^\n]+)/gi;
-    const events = [...text.matchAll(eventPattern)];
-    
-    if (events.length > 0) {
-      const latest = events[0];
-      lastUpdate = `${latest[1]} ${latest[2]}`;
-      const detail = latest[3].trim();
-      const parts = detail.split(/\s{2,}|\t/);
-      if (parts.length >= 2) {
-        status = parts[0].trim();
-        lastLocation = parts.slice(1).join(', ').trim();
-      } else {
-        status = detail;
-      }
-    }
-
-    if (!lastLocation && !status) {
-      const statusMatch = text.match(/(In transit|Delivered|Picked up|On FedEx vehicle|At local FedEx|Shipment information|Label created|International shipment release)[^\n]*/i);
-      if (statusMatch) {
-        status = statusMatch[0].trim();
-      }
-
-      const locMatch = text.match(/(?:from|in|at)\s+([A-Z][a-zA-Z\s]+,\s*[A-Z]{2}(?:\s+\d{5})?)/i);
-      if (locMatch) {
-        lastLocation = locMatch[1].trim();
-      }
-    }
-
-    if (!lastLocation && !status) return null;
-
-    return {
-      lastLocation: lastLocation || 'N/A',
-      lastUpdate: lastUpdate || '',
-      status: status || 'Check carrier website',
-    };
-  } catch (e) {
-    console.error('FedEx parse error:', e);
-    return null;
+  // Pattern 3: Location
+  if (!lastLocation) {
+    const locMatch = text.match(/([A-Z][a-z]+(?:\s[A-Z][a-z]+)*,\s*[A-Z]{2,})/);
+    if (locMatch) lastLocation = locMatch[1];
   }
-}
 
-// Generic fallback parser
-function parseGenericTracking(text: string): { lastLocation: string; lastUpdate: string; status: string } | null {
-  // Try to find any location-like text
-  const locationMatch = text.match(/([A-Z][a-z]+(?:\s[A-Z][a-z]+)*,\s*[A-Z]{2,})/);
-  const statusMatch = text.match(/(delivered|in transit|picked up|out for delivery|shipment information|departed|arrived|cleared customs|customs|processing)/i);
-  
-  if (!locationMatch && !statusMatch) return null;
+  if (!status && !lastLocation) return null;
 
   return {
-    lastLocation: locationMatch ? locationMatch[1] : 'N/A',
-    lastUpdate: '',
-    status: statusMatch ? statusMatch[1] : 'Unknown',
+    lastLocation: lastLocation || 'N/A',
+    lastUpdate: lastUpdate || '',
+    status: status || 'Check carrier website',
   };
 }
 
@@ -162,83 +199,48 @@ serve(async (req) => {
       );
     }
 
-    let trackingUrl = '';
-    if (carrier === 'DHL') {
-      trackingUrl = getDHLTrackingUrl(trackingNumber);
-    } else if (carrier === 'FedEx') {
-      trackingUrl = getFedExTrackingUrl(trackingNumber);
-    } else {
-      return new Response(
-        JSON.stringify({ success: false, error: `Unsupported carrier: ${carrier}` }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`Scraping ${carrier} tracking for: ${trackingNumber}`);
-
-    // Use Jina AI to scrape the tracking page
-    const jinaUrl = `https://r.jina.ai/${trackingUrl}`;
-    const jinaRes = await fetch(jinaUrl, {
-      headers: {
-        "X-No-Cache": "true",
-        "X-Wait-For-Selector": carrier === 'DHL' ? '.c-tracking-result' : '.shipment-status',
-      }
-    });
-
-    if (!jinaRes.ok) {
-      console.error(`Jina fetch failed: ${jinaRes.status}`);
-      return new Response(
-        JSON.stringify({ success: false, error: 'Failed to fetch tracking page' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const pageText = await jinaRes.text();
-    console.log(`Got ${pageText.length} chars from Jina for ${carrier}`);
-    // Log first 2000 chars for debugging
-    console.log('Page preview:', pageText.substring(0, 2000));
+    console.log(`Tracking ${carrier}: ${trackingNumber}`);
 
     let result = null;
-    if (carrier === 'DHL') {
-      result = parseDHLTracking(pageText);
-    } else if (carrier === 'FedEx') {
-      result = parseFedExTracking(pageText);
-    }
 
-    // Fallback to generic parser
-    if (!result) {
-      result = parseGenericTracking(pageText);
+    if (carrier === 'DHL') {
+      // Try DHL's public tracking API first
+      result = await fetchDHLTracking(trackingNumber);
+      if (!result) {
+        // Fallback to 17track
+        result = await fetchFrom17Track(trackingNumber, 'DHL');
+      }
+    } else if (carrier === 'FedEx') {
+      result = await fetchFedExTracking(trackingNumber);
+    } else {
+      // For any other carrier, try 17track
+      result = await fetchFrom17Track(trackingNumber, carrier);
     }
 
     if (!result) {
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Could not parse tracking info. The carrier page may have changed format.',
-          rawPreview: pageText.substring(0, 500),
-        }),
+        JSON.stringify({ success: false, error: 'Could not retrieve tracking info. Try again later.' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
+      JSON.stringify({
+        success: true,
         data: {
           carrier,
           trackingNumber,
-          lastLocation: result.lastLocation,
-          lastUpdate: result.lastUpdate,
-          status: result.status,
+          ...result,
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Track shipment error:', error);
+    const msg = error instanceof Error ? error.message : 'Internal error';
     return new Response(
-      JSON.stringify({ success: false, error: error.message || 'Internal error' }),
+      JSON.stringify({ success: false, error: msg }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
