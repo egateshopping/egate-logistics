@@ -309,15 +309,26 @@ export default function OrderDetails() {
                       </Badge>
                     )}
                   </div>
-                  <a
-                    href={`https://www.17track.net/en/track?nums=${o.international_tracking}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors text-sm"
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    Track: {o.international_tracking}
-                  </a>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <a
+                      href={`https://www.17track.net/en/track?nums=${o.international_tracking}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors text-sm"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      Track: {o.international_tracking}
+                    </a>
+                    {o.shipment_id && (
+                      <a
+                        href={`/shipment/${o.shipment_id}`}
+                        className="inline-flex items-center gap-2 px-3 py-1.5 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors text-sm"
+                      >
+                        <Package className="h-3 w-3" />
+                        View All Packages
+                      </a>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
