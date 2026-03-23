@@ -419,6 +419,9 @@ export type Database = {
           cod_amount: number | null
           created_at: string
           id: string
+          last_location: string | null
+          last_status: string | null
+          last_update: string | null
           master_tracking_number: string | null
           notes: string | null
           paid_from_wallet: number | null
@@ -436,6 +439,9 @@ export type Database = {
           cod_amount?: number | null
           created_at?: string
           id?: string
+          last_location?: string | null
+          last_status?: string | null
+          last_update?: string | null
           master_tracking_number?: string | null
           notes?: string | null
           paid_from_wallet?: number | null
@@ -453,6 +459,9 @@ export type Database = {
           cod_amount?: number | null
           created_at?: string
           id?: string
+          last_location?: string | null
+          last_status?: string | null
+          last_update?: string | null
           master_tracking_number?: string | null
           notes?: string | null
           paid_from_wallet?: number | null
