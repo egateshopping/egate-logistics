@@ -107,11 +107,15 @@ export function CreateShipmentDialog({ onCreated }: CreateShipmentDialogProps) {
 
     const matched = new Set<string>();
     const unmatchedCodes: string[] = [];
+    const normalizeCode = (value: string | null | undefined) =>
+      (value ?? '').replace(/\s+/g, '').toUpperCase();
 
     codes.forEach(code => {
-      const order = orders.find(o => o.package_code?.toUpperCase() === code);
-      if (order) {
-        matched.add(order.id);
+      const normalizedInput = normalizeCode(code);
+      const matchingOrders = orders.filter(o => normalizeCode(o.package_code) === normalizedInput);
+
+      if (matchingOrders.length > 0) {
+        matchingOrders.forEach(order => matched.add(order.id));
       } else {
         unmatchedCodes.push(code);
       }
