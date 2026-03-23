@@ -330,7 +330,42 @@ export function AdminShipmentCard({ shipment, profile, ordersCount, packageCodes
                     </div>
                   )}
 
-                  {/* Customer Info */}
+                  {/* Live Tracking Location */}
+                  {shipment.master_tracking_number && (
+                    <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                      {trackingInfo ? (
+                        <div className="flex items-center gap-2 text-xs">
+                          <Navigation className="h-3 w-3 text-primary" />
+                          <span className="text-primary font-medium">{trackingInfo.status}</span>
+                          {trackingInfo.lastLocation !== 'N/A' && (
+                            <span className="text-muted-foreground">• {trackingInfo.lastLocation}</span>
+                          )}
+                          {trackingInfo.lastUpdate && (
+                            <span className="text-muted-foreground">• {trackingInfo.lastUpdate}</span>
+                          )}
+                          <button
+                            onClick={fetchTrackingInfo}
+                            className="text-primary hover:underline text-[10px] ml-1"
+                          >
+                            {isTracking ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Refresh'}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={fetchTrackingInfo}
+                          disabled={isTracking}
+                          className="flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50"
+                        >
+                          {isTracking ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Navigation className="h-3 w-3" />
+                          )}
+                          {isTracking ? 'Fetching...' : 'Get Live Location'}
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {profile && (
                     <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
                       <Link 
