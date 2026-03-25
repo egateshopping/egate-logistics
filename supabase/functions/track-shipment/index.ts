@@ -5,131 +5,105 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
-async function fetchWithScrapingdog(url: string): Promise<string | null> {
-  const apiKey = Deno.env.get('SCRAPINGDOG_API_KEY');
+async function fetchVia17Track(trackingNumber: string): Promise<{ lastLocation: string; lastUpdate: string; status: string } | null> {
+  const apiKey = Deno.env.get('TRACK17_API_KEY');
   if (!apiKey) {
-    console.log('SCRAPINGDOG_API_KEY not set');
+    console.error('TRACK17_API_KEY not set');
     return null;
   }
-  try {
-    const sdUrl = `https://api.scrapingdog.com/scrape?api_key=${apiKey}&url=${encodeURIComponent(url)}&render=true&wait=5000`;
-    const res = await fetch(sdUrl);
-    if (!res.ok) {
-      console.log('Scrapingdog failed:', res.status);
-      const body = await res.text();
-      console.log('Scrapingdog response:', body.substring(0, 500));
-      return null;
-    }
-    return await res.text();
-  } catch (e) {
-    console.error('Scrapingdog error:', e);
-    return null;
-  }
-}
 
-async function fetchDHLTracking(trackingNumber: string): Promise<{ lastLocation: string; lastUpdate: string; status: string } | null> {
   try {
-    // Try DHL public unified tracking API first
-    const url = `https://www.dhl.com/utapi?trackingNumber=${trackingNumber}&language=en&requesterCountryCode=US`;
-    const res = await fetch(url, {
+    // Register the tracking number first
+    const registerRes = await fetch('https://api.17track.net/track/v2.2/register', {
+      method: 'POST',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/json',
-        'Referer': 'https://www.dhl.com/',
-      }
+        '17token': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify([{ number: trackingNumber }]),
     });
 
-    if (res.ok) {
-      const data = await res.json();
-      const shipments = data?.shipments;
-      if (shipments && shipments.length > 0) {
-        const shipment = shipments[0];
-        const latestEvent = shipment.events?.[0];
-        const statusInfo = shipment.status;
-        
-        let lastLocation = 'N/A';
-        let lastUpdate = '';
-        let status = statusInfo?.description || statusInfo?.status || 'Unknown';
+    if (!registerRes.ok) {
+      console.log('17track register failed:', registerRes.status, await registerRes.text());
+    }
 
-        if (latestEvent) {
-          const loc = latestEvent.location;
-          if (loc?.address) {
-            const addr = loc.address;
-            const parts = [addr.addressLocality, addr.countryCode].filter(Boolean);
-            lastLocation = parts.join(', ') || 'N/A';
-          }
-          lastUpdate = latestEvent.timestamp || latestEvent.date || '';
-          if (latestEvent.description) status = latestEvent.description;
-        }
+    // Wait a moment for registration to process
+    await new Promise(r => setTimeout(r, 1500));
 
-        if (lastUpdate) {
-          try {
-            const d = new Date(lastUpdate);
-            lastUpdate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-          } catch {}
-        }
+    // Get tracking info
+    const trackRes = await fetch('https://api.17track.net/track/v2.2/gettrackinfo', {
+      method: 'POST',
+      headers: {
+        '17token': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify([{ number: trackingNumber }]),
+    });
 
-        return { lastLocation, lastUpdate, status };
+    if (!trackRes.ok) {
+      const errBody = await trackRes.text();
+      console.error('17track gettrackinfo failed:', trackRes.status, errBody);
+      return null;
+    }
+
+    const data = await trackRes.json();
+    console.log('17track response:', JSON.stringify(data).substring(0, 1000));
+
+    const accepted = data?.data?.accepted;
+    if (!accepted || accepted.length === 0) {
+      console.log('17track: no accepted tracking data');
+      // Check rejected
+      const rejected = data?.data?.rejected;
+      if (rejected && rejected.length > 0) {
+        console.log('17track rejected:', JSON.stringify(rejected));
+      }
+      return null;
+    }
+
+    const track = accepted[0];
+    const latestEvent = track?.track?.z0?.z || track?.track?.z1?.z;
+    const trackInfo = track?.track;
+
+    let status = 'Unknown';
+    let lastLocation = 'N/A';
+    let lastUpdate = '';
+
+    // Get status from track info
+    const statusMap: Record<number, string> = {
+      0: 'Not Found',
+      10: 'In Transit',
+      20: 'Expired',
+      30: 'Pick Up',
+      35: 'Undelivered',
+      40: 'Delivered',
+      50: 'Alert',
+    };
+
+    if (trackInfo?.e !== undefined) {
+      status = statusMap[trackInfo.e] || `Status ${trackInfo.e}`;
+    }
+
+    // Get latest event details
+    if (latestEvent && latestEvent.length > 0) {
+      const latest = latestEvent[0];
+      if (latest.c) lastLocation = latest.c;
+      if (latest.a) {
+        lastUpdate = latest.a;
+        try {
+          const d = new Date(lastUpdate);
+          lastUpdate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        } catch {}
+      }
+      if (latest.z) {
+        status = latest.z;
       }
     }
-    console.log('DHL utapi failed, trying Scrapingdog...');
+
+    return { lastLocation, lastUpdate, status };
   } catch (e) {
-    console.error('DHL API error:', e);
+    console.error('17track error:', e);
+    return null;
   }
-
-  // Fallback: scrape DHL tracking page
-  const html = await fetchWithScrapingdog(`https://www.dhl.com/global-en/home/tracking/tracking-express.html?submit=1&tracking-id=${trackingNumber}`);
-  if (html) return parseTrackingHtml(html);
-  return null;
-}
-
-async function fetchFedExTracking(trackingNumber: string): Promise<{ lastLocation: string; lastUpdate: string; status: string } | null> {
-  // Scrape FedEx tracking page via Scrapingdog
-  const html = await fetchWithScrapingdog(`https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`);
-  if (html) {
-    const result = parseTrackingHtml(html);
-    if (result) return result;
-  }
-
-  // Fallback: try 17track
-  const html17 = await fetchWithScrapingdog(`https://t.17track.net/en#nums=${trackingNumber}`);
-  if (html17) return parseTrackingHtml(html17);
-  
-  return null;
-}
-
-function parseTrackingHtml(html: string): { lastLocation: string; lastUpdate: string; status: string } | null {
-  let status = '';
-  let lastLocation = '';
-  let lastUpdate = '';
-
-  // Common status keywords
-  const statusPatterns = [
-    /(delivered|in transit|picked up|out for delivery|shipment information received|departed|arrived|cleared customs|customs clearance|processing|label created|on fedex vehicle|at local fedex|international shipment release|at destination|in clearance|package available|shipment exception|tendered to|ready for pickup)/i,
-  ];
-  for (const pat of statusPatterns) {
-    const m = html.match(pat);
-    if (m) {
-      status = m[0].trim();
-      break;
-    }
-  }
-
-  // Location pattern: "City, STATE" or "City, XX"
-  const locMatch = html.match(/([A-Z][a-zA-Z\s]+,\s*[A-Z]{2,3})\b/);
-  if (locMatch) lastLocation = locMatch[1].trim();
-
-  // Date patterns
-  const dateMatch = html.match(/(\w{3,9}\s+\d{1,2},?\s+\d{4}(?:\s+\d{1,2}:\d{2}\s*(?:am|pm|AM|PM)?)?)/);
-  if (dateMatch) lastUpdate = dateMatch[1].trim();
-
-  if (!status && !lastLocation) return null;
-
-  return {
-    lastLocation: lastLocation || 'N/A',
-    lastUpdate: lastUpdate || '',
-    status: status || 'Check carrier website',
-  };
 }
 
 serve(async (req) => {
@@ -150,17 +124,7 @@ serve(async (req) => {
     const cleanTracking = trackingNumber.trim();
     console.log(`Tracking ${carrier}: ${cleanTracking}`);
 
-    let result = null;
-
-    if (carrier === 'DHL') {
-      result = await fetchDHLTracking(cleanTracking);
-    } else if (carrier === 'FedEx') {
-      result = await fetchFedExTracking(cleanTracking);
-    } else {
-      // Generic: try 17track via Scrapingdog
-      const html = await fetchWithScrapingdog(`https://t.17track.net/en#nums=${cleanTracking}`);
-      if (html) result = parseTrackingHtml(html);
-    }
+    const result = await fetchVia17Track(cleanTracking);
 
     if (!result) {
       return new Response(
