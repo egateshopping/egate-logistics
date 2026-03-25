@@ -23,12 +23,15 @@ async function fetchVia17Track(trackingNumber: string): Promise<{ lastLocation: 
       body: JSON.stringify([{ number: trackingNumber }]),
     });
 
+    const registerBody = await registerRes.text();
+    console.log('17track register response:', registerRes.status, registerBody);
+
     if (!registerRes.ok) {
-      console.log('17track register failed:', registerRes.status, await registerRes.text());
+      console.log('17track register failed');
     }
 
-    // Wait a moment for registration to process
-    await new Promise(r => setTimeout(r, 1500));
+    // Wait for 17track to process the registration
+    await new Promise(r => setTimeout(r, 3000));
 
     // Get tracking info
     const trackRes = await fetch('https://api.17track.net/track/v2.2/gettrackinfo', {
