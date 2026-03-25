@@ -5,7 +5,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
-async function fetchVia17Track(trackingNumber: string): Promise<{ lastLocation: string; lastUpdate: string; status: string } | null> {
+// 17track carrier codes: https://res.17track.net/asset/carrier/info/apicarrier.all.json
+const CARRIER_CODES: Record<string, number> = {
+  'DHL': 7011,      // DHL Express
+  'FedEx': 21051,    // FedEx
+  'UPS': 21061,      // UPS
+  'USPS': 21051,     // USPS
+  'Aramex': 21067,   // Aramex
+};
+
+async function fetchVia17Track(trackingNumber: string, carrier?: string): Promise<{ lastLocation: string; lastUpdate: string; status: string } | null> {
   const apiKey = Deno.env.get('TRACK17_API_KEY');
   if (!apiKey) {
     console.error('TRACK17_API_KEY not set');
