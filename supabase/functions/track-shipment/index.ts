@@ -27,12 +27,16 @@ async function fetchVia17Track(trackingNumber: string, carrier?: string): Promis
   };
 
   try {
-    // Step 1: Register the tracking number
-    console.log('Registering tracking number with 17track...');
+    const registerPayload: any = { number: trackingNumber };
+    if (carrier && CARRIER_CODES[carrier]) {
+      registerPayload.carrier = CARRIER_CODES[carrier];
+    }
+    
+    console.log('Registering tracking number with 17track...', JSON.stringify(registerPayload));
     const registerRes = await fetch('https://api.17track.net/track/v2.2/register', {
       method: 'POST',
       headers,
-      body: JSON.stringify([{ number: trackingNumber }]),
+      body: JSON.stringify([registerPayload]),
     });
     const registerData = await registerRes.json();
     console.log('17track register:', JSON.stringify(registerData));
