@@ -150,7 +150,7 @@ serve(async (req) => {
     const cleanTracking = trackingNumber.trim();
     console.log(`Tracking ${carrier}: ${cleanTracking}`);
 
-    const result = await fetchVia17Track(cleanTracking);
+    const result = await fetchVia17Track(cleanTracking, carrier);
 
     if (!result) {
       return new Response(
