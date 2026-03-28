@@ -15,6 +15,7 @@ import OrderDetails from "./pages/OrderDetails";
 import Admin from "./pages/Admin";
 import AdminWeightSettings from "./pages/AdminWeightSettings";
 import AdminShipments from "./pages/AdminShipments";
+import AdminSettings from "./pages/AdminSettings";
 import CustomerProfile from "./pages/CustomerProfile";
 import ShipmentDetails from "./pages/ShipmentDetails";
 import NotFound from "./pages/NotFound";
@@ -40,6 +41,7 @@ const App = () => (
             <Route path="/admin" element={<Admin />} />
             <Route path="/admin/shipments" element={<AdminShipments />} />
             <Route path="/admin/settings/weights" element={<AdminWeightSettings />} />
+            <Route path="/admin/settings" element={<AdminSettings />} />
             <Route path="/admin/customer/:userId" element={<CustomerProfile />} />
             <Route path="/shipment/:shipmentId" element={<ShipmentDetails />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

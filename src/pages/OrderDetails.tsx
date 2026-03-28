@@ -1,21 +1,9 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft,
-  Package,
-  ExternalLink,
-  Truck,
-  CheckCircle,
-  CreditCard,
-  AlertTriangle,
-  ShoppingCart,
-  Box,
-  Plane,
-  Home,
-  ImageIcon,
-  Clock,
-  Warehouse,
-  MapPin,
+  ArrowLeft, Package, ExternalLink, Truck, CheckCircle,
+  CreditCard, AlertTriangle, ShoppingCart, Box, Plane,
+  Home, ImageIcon, Clock, Warehouse, MapPin,
 } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
@@ -25,16 +13,17 @@ import { supabase } from "@/lib/supabase";
 import { getStatusLabel, getStatusColor } from "@/lib/supabase";
 import type { Order } from "@/lib/supabase";
 import { format } from "date-fns";
+import { useAppSettings } from "@/hooks/useAppSettings";
 
 // ── مراحل التتبع الصحيحة ─────────────────────────────────
 const timelineSteps = [
-  { key: "order_placed", label: "Order Placed", icon: ShoppingCart },
-  { key: "payment_received", label: "Payment & Purchase Clear", icon: CreditCard },
-  { key: "purchased", label: "Item Purchased", icon: Box },
-  { key: "domestic_shipping", label: "Shipping to Warehouse", icon: Truck },
-  { key: "at_warehouse", label: "Arrived at Warehouse", icon: Warehouse },
-  { key: "international_shipping", label: "On the Way to You", icon: Plane },
-  { key: "delivered", label: "Delivered", icon: Home },
+  { key: "order_placed",          label: "Order Placed",          icon: ShoppingCart },
+  { key: "payment_received",      label: "Payment & Purchase Clear", icon: CreditCard },
+  { key: "purchased",             label: "Item Purchased",         icon: Box },
+  { key: "domestic_shipping",     label: "Shipping to Warehouse",  icon: Truck },
+  { key: "at_warehouse",          label: "Arrived at Warehouse",   icon: Warehouse },
+  { key: "international_shipping", label: "On the Way to You",     icon: Plane },
+  { key: "delivered",             label: "Delivered",              icon: Home },
 ];
 
 const getTimelineStep = (status: string): number => {
@@ -70,6 +59,7 @@ export default function OrderDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, isLoading: authLoading } = useAuth();
+  const { settings } = useAppSettings();
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -357,7 +347,7 @@ export default function OrderDetails() {
                   <div className="text-right">
                     <p className="font-bold text-xl text-primary">{fmt(order.total_amount)}</p>
                     <p className="text-xs text-muted-foreground">
-                      AED {(Number(order.total_amount) * USD_TO_AED).toFixed(2)}
+                      {Math.round(Number(order.total_amount) * settings.usdToIqd).toLocaleString()} IQD
                     </p>
                   </div>
                 </div>

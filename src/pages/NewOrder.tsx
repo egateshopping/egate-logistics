@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
+import { useAppSettings } from "@/hooks/useAppSettings";
 
 // ── فئات المنتجات والأوزان التقديرية ──────────────────────
 const CATEGORIES = [
@@ -31,6 +32,7 @@ export default function NewOrder() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { settings, formatIqd } = useAppSettings();
   const initialUrl = (location.state as { productUrl?: string })?.productUrl || "";
 
   const [formData, setFormData] = useState({
