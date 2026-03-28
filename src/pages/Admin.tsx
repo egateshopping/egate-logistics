@@ -154,6 +154,12 @@ export default function Admin() {
                 Shipping Rules ⚖️
               </Button>
             </Link>
+            <Link to="/admin/settings">
+              <Button variant="outline" className="gap-2">
+                <Scale className="h-4 w-4" />
+                Pricing Settings 💱
+              </Button>
+            </Link>
           </div>
         </div>
 
