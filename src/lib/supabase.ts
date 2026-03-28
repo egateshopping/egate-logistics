@@ -109,13 +109,13 @@ export interface Dispute {
 export const getStatusLabel = (status: OrderStatus): string => {
   const labels: Record<OrderStatus, string> = {
     pending_payment: 'Pending Payment',
-    payment_received: 'Payment Received',
-    purchasing: 'Purchasing',
-    purchased: 'Purchased',
+    payment_received: 'Payment & Purchase Clear',
+    purchasing: 'Payment & Purchase Clear',
+    purchased: 'Item Purchased',
     domestic_shipping: 'Shipping to Warehouse',
     at_warehouse: 'Arrived at Warehouse',
-    international_shipping: 'International Shipping',
-    customs: 'In Customs',
+    international_shipping: 'On the Way to You',
+    customs: 'Customs Clearance',
     out_for_delivery: 'Out for Delivery',
     delivered: 'Delivered',
     under_investigation: 'Under Investigation',
