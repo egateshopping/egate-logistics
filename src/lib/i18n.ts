@@ -1,0 +1,231 @@
+// ── نظام اللغة العربية/الإنجليزية ──────────────────────────
+
+export type Language = 'en' | 'ar';
+
+export const translations = {
+  en: {
+    // Navigation
+    home: 'Home',
+    stores: 'Stores',
+    myOrders: 'My Orders',
+    admin: 'Admin',
+    signIn: 'Sign In',
+    getStarted: 'Get Started',
+    signOut: 'Sign Out',
+    profile: 'Profile',
+
+    // Hero
+    heroTitle: 'Shop US Stores,\nWe Ship to You',
+    heroSubtitle: 'Paste any product link below. We handle purchasing, shipping, and customs — hassle-free.',
+    heroCta: 'Paste any US product link here...',
+    anyProduct: 'Any Product',
+    anyProductDesc: 'From any US store',
+    secure: 'Secure',
+    secureDesc: 'Protected payments',
+    fastDelivery: 'Fast Delivery',
+    fastDeliveryDesc: '7-14 days shipping',
+    fullTracking: 'Full Tracking',
+    fullTrackingDesc: 'Door to door',
+
+    // Orders
+    newOrder: 'New Order',
+    orderDetails: 'Order Details',
+    backToOrders: 'Back to Orders',
+    placedOn: 'Placed on',
+    quantity: 'Quantity',
+    color: 'Color',
+    size: 'Size',
+    specialNotes: 'Special Notes',
+    expectedDelivery: 'Expected Delivery',
+    orderProgress: 'Order Progress',
+    trackingInfo: 'Tracking Information',
+    trackPackage: 'Track Package',
+    priceBreakdown: 'Price Breakdown',
+    productPrice: 'Product Price',
+    shipping: 'International Shipping',
+    customs: 'Customs (10%)',
+    serviceFee: 'Service Fee',
+    total: 'Total',
+    paymentConfirmed: '✓ Payment Confirmed',
+    awaitingPayment: '⏳ Awaiting Payment',
+    pendingPrice: 'Price pending calculation',
+    pendingPriceDesc: "We'll contact you once we have the final price.",
+
+    // Status
+    pending_payment: 'Pending Payment',
+    payment_received: 'Payment & Purchase Clear',
+    purchasing: 'Payment & Purchase Clear',
+    purchased: 'Item Purchased',
+    domestic_shipping: 'Shipping to Warehouse',
+    at_warehouse: 'Arrived at Warehouse',
+    international_shipping: 'On the Way to You',
+    customs_status: 'Customs Clearance',
+    out_for_delivery: 'Out for Delivery',
+    delivered: 'Delivered',
+    cancelled: 'Cancelled',
+    under_investigation: 'Under Investigation',
+
+    // Timeline
+    orderPlaced: 'Order Placed',
+    paymentClear: 'Payment & Purchase Clear',
+    itemPurchased: 'Item Purchased',
+    shippingToWarehouse: 'Shipping to Warehouse',
+    arrivedAtWarehouse: 'Arrived at Warehouse',
+    onTheWay: 'On the Way to You',
+
+    // Profile
+    profileSettings: 'Profile Settings',
+    fullName: 'Full Name',
+    phone: 'Phone (WhatsApp)',
+    address: 'Delivery Address',
+    city: 'City',
+    country: 'Country',
+    saveChanges: 'Save Changes',
+    totalOrders: 'Total Orders',
+    active: 'Active',
+    loyalCustomer: 'Loyal Customer',
+    standardCustomer: 'Standard Customer',
+    payOnDelivery: 'Pay on Delivery',
+    depositRequired: 'Deposit Required',
+
+    // New Order
+    productUrl: 'Product URL',
+    productCategory: 'Product Category',
+    productName: 'Product Name',
+    howItWorks: 'How it works',
+    howItWorksDesc: 'Submit your order and our team will contact you with the final price within 24 hours.',
+    submitOrder: 'Submit Order Request',
+    submitting: 'Submitting...',
+    teamReview: 'Our team will review your order and send you the final price within 24 hours.',
+
+    // Need Help
+    needHelp: 'Need Help?',
+    findProduct: '🔍 Find a product for me',
+    trackOrder: '📦 Track my order',
+    askPricing: '💰 Ask about pricing',
+    otherQuestion: '❓ Other question',
+    replyFast: 'We reply within minutes 🟢',
+    close: 'Close',
+
+    // Loyalty
+    yourLevel: 'Your Level',
+    progressTo: 'Progress to',
+    spentThisYear: 'Spent this year',
+    toNextLevel: 'to next level',
+    memberBenefits: 'Your Benefits',
+  },
+
+  ar: {
+    // Navigation
+    home: 'الرئيسية',
+    stores: 'المتاجر',
+    myOrders: 'طلباتي',
+    admin: 'الإدارة',
+    signIn: 'تسجيل الدخول',
+    getStarted: 'ابدأ الآن',
+    signOut: 'تسجيل الخروج',
+    profile: 'الملف الشخصي',
+
+    // Hero
+    heroTitle: 'تسوّق من المتاجر الأمريكية\nونوصّل إليك',
+    heroSubtitle: 'الصق رابط أي منتج وسنتولى الشراء والشحن والجمارك — بدون تعقيدات.',
+    heroCta: 'الصق رابط المنتج الأمريكي هنا...',
+    anyProduct: 'أي منتج',
+    anyProductDesc: 'من أي متجر أمريكي',
+    secure: 'آمن',
+    secureDesc: 'مدفوعات محمية',
+    fastDelivery: 'توصيل سريع',
+    fastDeliveryDesc: '7-14 يوم عمل',
+    fullTracking: 'تتبع كامل',
+    fullTrackingDesc: 'من الباب للباب',
+
+    // Orders
+    newOrder: 'طلب جديد',
+    orderDetails: 'تفاصيل الطلب',
+    backToOrders: 'العودة للطلبات',
+    placedOn: 'تاريخ الطلب',
+    quantity: 'الكمية',
+    color: 'اللون',
+    size: 'المقاس',
+    specialNotes: 'ملاحظات خاصة',
+    expectedDelivery: 'موعد التسليم المتوقع',
+    orderProgress: 'تقدم الطلب',
+    trackingInfo: 'معلومات التتبع',
+    trackPackage: 'تتبع الشحنة',
+    priceBreakdown: 'تفاصيل السعر',
+    productPrice: 'سعر المنتج',
+    shipping: 'الشحن الدولي',
+    customs: 'الجمارك (10%)',
+    serviceFee: 'رسوم الخدمة',
+    total: 'الإجمالي',
+    paymentConfirmed: '✓ تم تأكيد الدفع',
+    awaitingPayment: '⏳ بانتظار الدفع',
+    pendingPrice: 'السعر قيد الاحتساب',
+    pendingPriceDesc: 'سنتواصل معك فور معرفة السعر النهائي.',
+
+    // Status
+    pending_payment: 'بانتظار الدفع',
+    payment_received: 'تم الدفع والشراء',
+    purchasing: 'تم الدفع والشراء',
+    purchased: 'تم شراء المنتج',
+    domestic_shipping: 'في الطريق للمستودع',
+    at_warehouse: 'وصل المستودع',
+    international_shipping: 'في الطريق إليك',
+    customs_status: 'التخليص الجمركي',
+    out_for_delivery: 'مع المندوب',
+    delivered: 'تم التسليم',
+    cancelled: 'ملغي',
+    under_investigation: 'قيد التحقيق',
+
+    // Timeline
+    orderPlaced: 'تم الطلب',
+    paymentClear: 'تم الدفع والشراء',
+    itemPurchased: 'تم شراء المنتج',
+    shippingToWarehouse: 'الشحن للمستودع',
+    arrivedAtWarehouse: 'وصل المستودع',
+    onTheWay: 'في الطريق إليك',
+
+    // Profile
+    profileSettings: 'إعدادات الملف',
+    fullName: 'الاسم الكامل',
+    phone: 'رقم الهاتف (واتساب)',
+    address: 'عنوان التوصيل',
+    city: 'المدينة',
+    country: 'الدولة',
+    saveChanges: 'حفظ التغييرات',
+    totalOrders: 'إجمالي الطلبات',
+    active: 'نشط',
+    loyalCustomer: 'زبون موثوق',
+    standardCustomer: 'زبون عادي',
+    payOnDelivery: 'الدفع عند الاستلام',
+    depositRequired: 'مطلوب عربون',
+
+    // New Order
+    productUrl: 'رابط المنتج',
+    productCategory: 'فئة المنتج',
+    productName: 'اسم المنتج',
+    howItWorks: 'كيف يعمل',
+    howItWorksDesc: 'أرسل طلبك وسيتواصل معك فريقنا بالسعر النهائي خلال 24 ساعة.',
+    submitOrder: 'إرسال طلب الشراء',
+    submitting: 'جاري الإرسال...',
+    teamReview: 'سيراجع فريقنا طلبك ويرسل السعر النهائي خلال 24 ساعة.',
+
+    // Need Help
+    needHelp: 'أحتاج مساعدة',
+    findProduct: '🔍 ابحث عن منتج لي',
+    trackOrder: '📦 تتبع طلبي',
+    askPricing: '💰 استفسار عن الأسعار',
+    otherQuestion: '❓ سؤال آخر',
+    replyFast: 'نرد خلال دقائق 🟢',
+    close: 'إغلاق',
+
+    // Loyalty
+    yourLevel: 'مستواك',
+    progressTo: 'التقدم نحو',
+    spentThisYear: 'أنفقت هذا العام',
+    toNextLevel: 'للمستوى التالي',
+    memberBenefits: 'مزاياك',
+  },
+};
+
+export type TranslationKey = keyof typeof translations.en;
