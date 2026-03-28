@@ -29,11 +29,11 @@ import { format } from "date-fns";
 // ── مراحل التتبع الصحيحة ─────────────────────────────────
 const timelineSteps = [
   { key: "order_placed", label: "Order Placed", icon: ShoppingCart },
-  { key: "payment_received", label: "Payment Received", icon: CreditCard },
+  { key: "payment_received", label: "Payment & Purchase Clear", icon: CreditCard },
   { key: "purchased", label: "Item Purchased", icon: Box },
-  { key: "domestic_shipping", label: "Shipping to Oregon", icon: Truck },
-  { key: "at_warehouse", label: "Oregon Warehouse", icon: Warehouse },
-  { key: "international_shipping", label: "Shipped to You", icon: Plane },
+  { key: "domestic_shipping", label: "Shipping to Warehouse", icon: Truck },
+  { key: "at_warehouse", label: "Arrived at Warehouse", icon: Warehouse },
+  { key: "international_shipping", label: "On the Way to You", icon: Plane },
   { key: "delivered", label: "Delivered", icon: Home },
 ];
 
@@ -273,17 +273,12 @@ export default function OrderDetails() {
             </h3>
 
             <div className="space-y-4">
-              {/* التتبع الداخلي */}
+              {/* التتبع الداخلي — مخفي عن العميل */}
               {o.domestic_tracking && (
                 <div className="p-4 bg-muted/30 rounded-xl border">
                   <div className="flex items-center gap-2 mb-2">
                     <MapPin className="h-4 w-4 text-primary" />
-                    <span className="font-medium text-sm">📦 Shipping to Oregon Warehouse</span>
-                    {o.domestic_carrier && (
-                      <Badge variant="outline" className="text-xs">
-                        {o.domestic_carrier}
-                      </Badge>
-                    )}
+                    <span className="font-medium text-sm">📦 Shipped — On the Way</span>
                   </div>
                   <a
                     href={`https://www.17track.net/en/track?nums=${o.domestic_tracking}`}
@@ -292,22 +287,17 @@ export default function OrderDetails() {
                     className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors text-sm"
                   >
                     <ExternalLink className="h-3 w-3" />
-                    Track: {o.domestic_tracking}
+                    Track Package
                   </a>
                 </div>
               )}
 
-              {/* التتبع الدولي */}
+              {/* التتبع الدولي — بدون اسم الشاحن */}
               {o.international_tracking && (
                 <div className="p-4 bg-muted/30 rounded-xl border">
                   <div className="flex items-center gap-2 mb-2">
                     <Plane className="h-4 w-4 text-primary" />
                     <span className="font-medium text-sm">✈️ International Shipment to You</span>
-                    {o.international_carrier && (
-                      <Badge variant="outline" className="text-xs">
-                        {o.international_carrier}
-                      </Badge>
-                    )}
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <a
@@ -317,7 +307,7 @@ export default function OrderDetails() {
                       className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors text-sm"
                     >
                       <ExternalLink className="h-3 w-3" />
-                      Track: {o.international_tracking}
+                      Track Package
                     </a>
                     {o.shipment_id && (
                       <a
