@@ -394,7 +394,9 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
             </div>
 
             {/* Package Code Input - shown for at_warehouse status */}
-            {['at_warehouse', 'international_shipping', 'customs', 'out_for_delivery', 'delivered'].includes(order.status || '') && (
+            {["at_warehouse", "international_shipping", "customs", "out_for_delivery", "delivered"].includes(
+              order.status || "",
+            ) && (
               <div className="flex items-center gap-2 mb-3">
                 <Input
                   value={packageCode}
@@ -639,7 +641,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
                         <MapPin className="h-4 w-4 text-primary" />
                         <Label className="font-medium">📦 Domestic Tracking</Label>
                       </div>
-                      <p className="text-xs text-muted-foreground">From seller → Oregon Warehouse</p>
+                      <p className="text-xs text-muted-foreground">From seller → Our Warehouse</p>
                       <Select value={domesticCarrier} onValueChange={setDomesticCarrier}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select carrier..." />
@@ -664,7 +666,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
                         <Truck className="h-4 w-4 text-primary" />
                         <Label className="font-medium">✈️ International Tracking</Label>
                       </div>
-                      <p className="text-xs text-muted-foreground">From Oregon Warehouse → Customer</p>
+                      <p className="text-xs text-muted-foreground">From Our Warehouse → Customer</p>
                       <Select value={internationalCarrier} onValueChange={setInternationalCarrier}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select carrier..." />
