@@ -1,6 +1,7 @@
 import { Package, Truck, ShieldCheck, Globe } from 'lucide-react';
 import { ProductLinkInput } from './ProductLinkInput';
 import { useLanguage } from '@/contexts/LanguageContext';
+import egateLogo from '@/assets/egate-logo.png';
 
 export function HeroSection() {
   const { t, isRtl } = useLanguage();
@@ -9,15 +10,10 @@ export function HeroSection() {
     <section className="relative overflow-hidden bg-gradient-to-b from-primary/5 to-background" dir={isRtl ? 'rtl' : 'ltr'}>
       <div className="container py-16 lg:py-28">
         <div className="text-center max-w-4xl mx-auto space-y-6">
+          {/* الشعار الرسمي */}
           <div className="inline-flex flex-col items-center gap-2 animate-fade-in">
-            <span className="text-5xl sm:text-6xl font-extrabold tracking-tight">
-              <span className="text-primary">e</span>
-              <span className="text-primary">g</span>
-              <span className="text-primary">ate</span>
-            </span>
-            <span className="text-sm font-medium text-accent tracking-widest uppercase">
-              Discover, Share & Buy
-            </span>
+            <img src={egateLogo} alt="Egate Shopping"
+              className="h-24 sm:h-28 w-auto object-contain" />
           </div>
 
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight animate-fade-in whitespace-pre-line">
