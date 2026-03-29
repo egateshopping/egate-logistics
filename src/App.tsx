@@ -20,6 +20,7 @@ import AdminSettings from "./pages/AdminSettings";
 import CustomerProfile from "./pages/CustomerProfile";
 import ShipmentDetails from "./pages/ShipmentDetails";
 import NotFound from "./pages/NotFound";
+import TermsOfService from "./pages/TermsOfService";
 
 const queryClient = new QueryClient();
 
@@ -46,7 +47,8 @@ const App = () => (
               <Route path="/admin/settings" element={<AdminSettings />} />
               <Route path="/admin/customer/:userId" element={<CustomerProfile />} />
               <Route path="/shipment/:shipmentId" element={<ShipmentDetails />} />
-              <Route path="*" element={<NotFound />} />
+              <Route path="/terms" element={<TermsOfService />} />
+            <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
         </TooltipProvider>

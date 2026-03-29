@@ -1,5 +1,5 @@
-import { Mail, Phone, Globe, Facebook, Instagram } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Mail, Phone, Globe, Facebook, Instagram } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export function Footer() {
   return (
@@ -13,7 +13,9 @@ export function Footer() {
                 <span className="text-primary">g</span>
                 <span className="text-primary">ate</span>
               </span>
-              <span className="text-xs font-medium text-accent tracking-widest uppercase">Discover, Share & Buy</span>
+              <span className="text-xs font-medium text-accent tracking-widest uppercase">
+                Discover, Share & Buy
+              </span>
             </Link>
             <p className="text-sm text-muted-foreground">
               Your trusted shopping partner connecting US stores to the Middle East.
@@ -68,6 +70,11 @@ export function Footer() {
                   My Orders
                 </Link>
               </li>
+              <li>
+                <Link to="/terms" className="text-muted-foreground hover:text-foreground transition-colors">
+                  Terms of Service
+                </Link>
+              </li>
             </ul>
           </div>
 
@@ -76,51 +83,36 @@ export function Footer() {
             <ul className="space-y-3 text-sm">
               <li className="flex items-center gap-2 text-muted-foreground">
                 <Globe className="h-4 w-4 shrink-0" />
-                <a
-                  href="https://www.egateshopping.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-foreground transition-colors"
-                >
+                <a href="https://www.egateshopping.com" target="_blank" rel="noopener noreferrer"
+                  className="hover:text-foreground transition-colors">
                   www.egateshopping.com
                 </a>
               </li>
               <li className="flex items-center gap-2 text-muted-foreground">
                 <Mail className="h-4 w-4 shrink-0" />
-                <a href="mailto:support@egateshopping.com" className="hover:text-foreground transition-colors">
+                <a href="mailto:support@egateshopping.com"
+                  className="hover:text-foreground transition-colors">
                   support@egateshopping.com
                 </a>
               </li>
               <li className="flex items-center gap-2 text-muted-foreground">
                 <Phone className="h-4 w-4 shrink-0 text-success" />
-                <a
-                  href="https://wa.me/9647709651092"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-foreground transition-colors"
-                >
+                <a href="https://wa.me/9647709651092" target="_blank" rel="noopener noreferrer"
+                  className="hover:text-foreground transition-colors">
                   WhatsApp: +964 770 965 1092
                 </a>
               </li>
               <li className="flex items-center gap-2 text-muted-foreground">
                 <Facebook className="h-4 w-4 shrink-0" />
-                <a
-                  href="https://www.facebook.com/egate.shopping1/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-foreground transition-colors"
-                >
+                <a href="https://www.facebook.com/egate.shopping1/" target="_blank" rel="noopener noreferrer"
+                  className="hover:text-foreground transition-colors">
                   egate.shopping1
                 </a>
               </li>
               <li className="flex items-center gap-2 text-muted-foreground">
                 <Instagram className="h-4 w-4 shrink-0" />
-                <a
-                  href="https://www.instagram.com/egate.shopping/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-foreground transition-colors"
-                >
+                <a href="https://www.instagram.com/egate.shopping/" target="_blank" rel="noopener noreferrer"
+                  className="hover:text-foreground transition-colors">
                   @egate.shopping
                 </a>
               </li>
@@ -142,7 +134,9 @@ export function Footer() {
                 <span className="text-primary font-bold shrink-0">3.</span>
                 We ship directly to your door
               </li>
-              <li className="mt-3 text-xs">📦 Delivery in 7–14 business days</li>
+              <li className="mt-3 text-xs">
+                📦 Delivery in 7–14 business days
+              </li>
             </ul>
           </div>
         </div>
