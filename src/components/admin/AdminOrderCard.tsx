@@ -71,6 +71,8 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
   const [isSaving, setIsSaving] = useState(false);
   const [isFetchingImage, setIsFetchingImage] = useState(false);
   const [isLoyalLoading, setIsLoyalLoading] = useState(false);
+  const [isDelayDialogOpen, setIsDelayDialogOpen] = useState(false);
+  const [delayReason, setDelayReason] = useState('');
 
   const isLoyal = (profile as any)?.is_loyal;
 
@@ -239,6 +241,20 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
     onUpdate();
   };
 
+  // إرسال إشعار تأخير عبر WhatsApp — #15
+  const sendDelayNotification = () => {
+    if (!profile?.phone) { toast.error('No phone number'); return; }
+    const phone = profile.phone.replace(/[^0-9]/g, '');
+    const name = profile.full_name || 'Customer';
+    const orderId = `#${order.id.slice(0, 8).toUpperCase()}`;
+    const reason = delayReason || 'customs or logistics';
+    const msg = `Hi ${name} 👋\n\nWe wanted to update you on your order ${orderId}.\n\nUnfortunately, your order has been slightly delayed due to ${reason}.\n\nWe apologize for the inconvenience and will keep you updated.\n\nThank you for your patience 🙏\nEgate Shopping`;
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank');
+    setIsDelayDialogOpen(false);
+    setDelayReason('');
+    toast.success('Delay notification sent via WhatsApp');
+  };
+
   // ترفيع العميل إلى Loyal
   const handleToggleLoyalty = async () => {
     if (!profile) return;
@@ -394,9 +410,7 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
             </div>
 
             {/* Package Code Input - shown for at_warehouse status */}
-            {["at_warehouse", "international_shipping", "customs", "out_for_delivery", "delivered"].includes(
-              order.status || "",
-            ) && (
+            {['at_warehouse', 'international_shipping', 'customs', 'out_for_delivery', 'delivered'].includes(order.status || '') && (
               <div className="flex items-center gap-2 mb-3">
                 <Input
                   value={packageCode}
@@ -705,26 +719,55 @@ export function AdminOrderCard({ order, profile, onUpdate }: AdminOrderCardProps
               {/* WhatsApp */}
               {profile?.phone && (
                 <div className="flex gap-1">
-                  <Button
-                    size="sm"
-                    variant="ghost"
+                  <Button size="sm" variant="ghost"
                     className="text-success hover:text-success p-1 h-8"
-                    onClick={() => openWhatsApp("price")}
-                    title="Send Price"
-                  >
+                    onClick={() => openWhatsApp("price")} title="Send Price">
                     <MessageCircle className="h-4 w-4" />
                     <span className="text-xs ml-1">💰</span>
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
+                  <Button size="sm" variant="ghost"
                     className="text-success hover:text-success p-1 h-8"
-                    onClick={() => openWhatsApp("tracking")}
-                    title="Send Tracking"
-                  >
+                    onClick={() => openWhatsApp("tracking")} title="Send Tracking">
                     <MessageCircle className="h-4 w-4" />
                     <span className="text-xs ml-1">✈️</span>
                   </Button>
+                  {/* زر إشعار التأخير — #15 */}
+                  <Dialog open={isDelayDialogOpen} onOpenChange={setIsDelayDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button size="sm" variant="ghost"
+                        className="text-warning hover:text-warning p-1 h-8"
+                        title="Send Delay Notification">
+                        <MessageCircle className="h-4 w-4" />
+                        <span className="text-xs ml-1">⏰</span>
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-sm">
+                      <DialogHeader>
+                        <DialogTitle>Send Delay Notification</DialogTitle>
+                        <DialogDescription>
+                          Notify {profile.full_name} about order delay via WhatsApp
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-3 py-3">
+                        <Label>Reason for delay (optional)</Label>
+                        <Input
+                          value={delayReason}
+                          onChange={(e) => setDelayReason(e.target.value)}
+                          placeholder="e.g., customs clearance, weather conditions..."
+                        />
+                        <div className="p-3 bg-muted/30 rounded-lg text-xs text-muted-foreground">
+                          A WhatsApp message will open with a pre-written delay notification for this customer.
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsDelayDialogOpen(false)}>Cancel</Button>
+                        <Button onClick={sendDelayNotification} className="bg-warning text-warning-foreground hover:bg-warning/90 border-0">
+                          <MessageCircle className="h-4 w-4 mr-2" />
+                          Send via WhatsApp
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 </div>
               )}
 

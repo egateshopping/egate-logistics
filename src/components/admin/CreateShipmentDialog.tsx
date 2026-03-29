@@ -228,15 +228,19 @@ export function CreateShipmentDialog({ onCreated }: CreateShipmentDialogProps) {
       <DialogTrigger asChild>
         <Button>
           <Plus className="h-4 w-4 mr-2" />
-          Create Shipment
+          Group Orders into Shipment
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
-            Create Shipment
+            Group Orders into International Shipment
           </DialogTitle>
+          <p className="text-xs text-muted-foreground mt-1">
+            Select multiple orders that will ship together in one box from our warehouse to the customer.
+            They will share one master tracking number.
+          </p>
         </DialogHeader>
 
         <div className="grid grid-cols-2 gap-4 mb-4">
