@@ -8,6 +8,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import egateLogo from '@/assets/egate-logo.png';
 
 export function Header() {
   const { user, profile, isAdmin, signOut } = useAuth();
@@ -22,12 +23,8 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between">
-        <Link to="/" className="flex items-center gap-2">
-          <span className="text-2xl font-extrabold tracking-tight">
-            <span className="text-primary">e</span>
-            <span className="text-primary">g</span>
-            <span className="text-primary">ate</span>
-          </span>
+        <Link to="/" className="flex items-center">
+          <img src={egateLogo} alt="Egate Shopping" className="h-10 w-auto object-contain" />
         </Link>
 
         <nav className="hidden md:flex items-center gap-1">
