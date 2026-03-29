@@ -323,45 +323,67 @@ export default function OrderDetails() {
           </h3>
 
           {order.total_amount && Number(order.total_amount) > 0 ? (
-            <div className="space-y-3">
-              {[
-                ["🛒 Product Price", fmt(order.base_item_cost)],
-                ["✈️ International Shipping", fmt(order.international_shipping)],
-                ["🏛️ Customs (10%)", fmt(order.customs)],
-                ["⚙️ Service Fee", "$2.00"],
-              ].map(([label, value]) => (
-                <div key={label} className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">{label}</span>
-                  <span>{value}</span>
+            <div className="space-y-4">
+
+              {/* #19 — السعر النهائي بارز في الأعلى */}
+              <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Amount</p>
+                  <p className="text-3xl font-bold text-primary">{fmt(order.total_amount)}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {Math.round(Number(order.total_amount) * settings.usdToIqd).toLocaleString()} IQD
+                  </p>
                 </div>
-              ))}
-              {order.discount && Number(order.discount) > 0 && (
-                <div className="flex justify-between text-sm text-success">
-                  <span>Discount</span>
-                  <span>-{fmt(order.discount)}</span>
-                </div>
-              )}
-              <div className="border-t border-border pt-3 mt-3">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-lg">Total</span>
-                  <div className="text-right">
-                    <p className="font-bold text-xl text-primary">{fmt(order.total_amount)}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {Math.round(Number(order.total_amount) * settings.usdToIqd).toLocaleString()} IQD
-                    </p>
-                  </div>
+                <div className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                  order.is_paid ? "bg-success/10 text-success" : "bg-warning/10 text-warning"
+                }`}>
+                  {order.is_paid ? "✓ Paid" : "⏳ Pending"}
                 </div>
               </div>
 
-              <div
-                className={`mt-4 p-3 rounded-lg ${
-                  order.is_paid ? "bg-success/10 border border-success/30" : "bg-warning/10 border border-warning/30"
-                }`}
-              >
-                <p className={`text-sm font-medium ${order.is_paid ? "text-success" : "text-warning"}`}>
-                  {order.is_paid ? "✓ Payment Confirmed" : "⏳ Awaiting Payment"}
-                </p>
-              </div>
+              {/* #21 — تفاصيل مبسّطة قابلة للطي */}
+              <details className="group">
+                <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground transition-colors list-none flex items-center gap-1">
+                  <span>View price breakdown</span>
+                  <span className="group-open:rotate-180 transition-transform inline-block">▾</span>
+                </summary>
+                <div className="mt-3 space-y-2">
+                  {[
+                    ["🛒 Product Price", fmt(order.base_item_cost)],
+                    ["✈️ Shipping", fmt(order.international_shipping)],
+                    ["🏛️ Customs (10%)", fmt(order.customs)],
+                    ["⚙️ Service Fee", "$2.00"],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">{label}</span>
+                      <span>{value}</span>
+                    </div>
+                  ))}
+                  {order.discount && Number(order.discount) > 0 && (
+                    <div className="flex justify-between text-sm text-success">
+                      <span>Discount</span>
+                      <span>-{fmt(order.discount)}</span>
+                    </div>
+                  )}
+                </div>
+              </details>
+
+              {/* العربون والمتبقي */}
+              {(o.deposit_paid > 0 || o.remaining_amount > 0) && (
+                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-border">
+                  <div className="p-3 bg-success/5 rounded-xl text-center">
+                    <p className="text-xs text-muted-foreground">Deposit Paid</p>
+                    <p className="font-bold text-success">${Number(o.deposit_paid).toFixed(2)}</p>
+                  </div>
+                  <div className="p-3 bg-warning/5 rounded-xl text-center">
+                    <p className="text-xs text-muted-foreground">Remaining on Delivery</p>
+                    <p className="font-bold text-warning">${Number(o.remaining_amount).toFixed(2)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {Math.round(Number(o.remaining_amount) * settings.usdToIqd).toLocaleString()} IQD
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground">
