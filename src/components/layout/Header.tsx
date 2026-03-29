@@ -7,10 +7,12 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useTheme } from '@/contexts/ThemeContext';
 
 export function Header() {
   const { user, profile, isAdmin, signOut } = useAuth();
   const { lang, setLang, t } = useLanguage();
+  const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -59,6 +61,18 @@ export function Header() {
         </nav>
 
         <div className="flex items-center gap-2">
+          {/* زر الوضع الليلي */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleTheme}
+            className="text-sm px-2"
+            title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          >
+            {isDark ? '☀️' : '🌙'}
+          </Button>
+
+          {/* زر تبديل اللغة */}
           <Button
             variant="ghost"
             size="sm"
