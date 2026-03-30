@@ -238,6 +238,50 @@ export default function NewOrder() {
 
         <div className="p-6 rounded-2xl bg-card border border-border">
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Image Upload for Product Identification */}
+            <div className="space-y-2">
+              <Label>📷 Identify Product by Photo</Label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleImageUpload}
+                className="hidden"
+              />
+              <div
+                onClick={() => !isIdentifying && fileInputRef.current?.click()}
+                className={`flex items-center gap-4 p-4 border-2 border-dashed rounded-xl cursor-pointer transition-all ${
+                  isIdentifying
+                    ? "border-primary/50 bg-primary/5"
+                    : "border-border hover:border-primary/40 hover:bg-primary/5"
+                }`}
+              >
+                {isIdentifying ? (
+                  <>
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">Identifying product...</p>
+                      <p className="text-xs text-muted-foreground">AI is analyzing your image</p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+                      <Camera className="h-6 w-6 text-primary" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">Take a photo or upload an image</p>
+                      <p className="text-xs text-muted-foreground">AI will identify the product and fill details automatically</p>
+                    </div>
+                    <Sparkles className="h-5 w-5 text-primary/60" />
+                  </>
+                )}
+              </div>
+            </div>
+
             {/* Product URL */}
             <div className="space-y-2">
               <Label htmlFor="product_url">Product URL *</Label>
