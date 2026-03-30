@@ -52,9 +52,73 @@ export default function NewOrder() {
   const [metaFetched, setMetaFetched] = useState(false);
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoDiscount, setPromoDiscount] = useState(0);
+  const [isIdentifying, setIsIdentifying] = useState(false);
 
   const fetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastFetchedUrl = useRef<string>("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // ── التعرف على المنتج من الصورة ────────────────────────────
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please upload an image file");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be less than 5MB");
+      return;
+    }
+
+    setIsIdentifying(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(",")[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const { data, error } = await supabase.functions.invoke("identify-product-image", {
+        body: { imageBase64: base64, mimeType: file.type },
+      });
+
+      if (error) throw error;
+
+      if (data?.productName) {
+        setFormData((prev) => ({
+          ...prev,
+          product_title: data.productName + (data.brand ? ` - ${data.brand}` : ""),
+          category: data.category || prev.category,
+        }));
+        toast.success(`✨ Product identified: ${data.productName}`, {
+          description: data.estimatedPrice ? `Estimated price: ${data.estimatedPrice}` : undefined,
+        });
+
+        // If we got a search query, auto-fill URL suggestion
+        if (data.searchQuery && !formData.product_url) {
+          setFormData((prev) => ({
+            ...prev,
+            product_url: prev.product_url || `https://www.amazon.com/s?k=${encodeURIComponent(data.searchQuery)}`,
+          }));
+        }
+      } else {
+        toast.error("Could not identify the product, please try another image");
+      }
+    } catch (err) {
+      console.error("Image identification failed:", err);
+      toast.error("Failed to identify product from image");
+    } finally {
+      setIsIdentifying(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   // ── جلب صورة وعنوان المنتج فقط ────────────────────────────
   const fetchMetadata = async (url: string) => {
