@@ -12,6 +12,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { getTierBySpend, getNextTier, getProgressToNextTier, LOYALTY_TIERS } from '@/lib/loyalty';
+import { MFASetup } from '@/components/profile/MFASetup';
 
 export default function Profile() {
   const { user, profile, isLoading: authLoading, refreshProfile } = useAuth();
@@ -219,6 +220,9 @@ export default function Profile() {
             </div>
           </form>
         </div>
+
+        {/* قسم 2FA */}
+        <MFASetup />
 
         {/* جميع مستويات الولاء */}
         <div className="p-6 rounded-2xl bg-card border border-border">
